@@ -1,0 +1,113 @@
+# JARVIS Codebase Explanation
+
+This document provides a detailed breakdown of the JARVIS AI codebase, explaining how each file and function works together to create the assistant.
+
+## 1. Project Structure
+The project is organized into a modular structure:
+- **`main.py`**: The entry point of the application.
+- **`core/`**: Contains the core logic (Voice, Engine, Registry, Skill Interface).
+- **`skills/`**: Contains the specific capabilities of JARVIS (Weather, Email, etc.).
+- **`.env`**: Stores sensitive configuration (API Keys).
+
+---
+
+## 2. File-by-File Breakdown
+
+### A. `main.py` (The Brain's Entry Point)
+This is the file you run to start JARVIS.
+- **`main()`**:
+    - **Initialization**:
+        1.  Loads environment variables (`.env`).
+        2.  Initializes `SkillRegistry` and loads all skills from the `skills/` directory.
+        3.  Initializes `JarvisEngine` with the loaded skills.
+    - **Main Loop**:
+        - Enters a `while True` loop to continuously listen for commands.
+        - **Text Mode**: Input via keyboard if `--text` flag is used.
+        - **Voice Mode**: Uses `listen()` to capture audio.
+        - **Wake Word Logic**: Checks if "Jarvis" is mentioned or if a direct command is used.
+        - **Execution**: Sends the cleaned query to `jarvis.run_conversation()`.
+        - **Response**: Speaks or prints the final response.
+
+### B. `core/voice.py` (The Mouth and Ears)
+Handles audio input and output.
+- **`speak(text)`**:
+    - Converts text to speech.
+    - **Logic**:
+        - Tries `pyttsx3` (an offline TTS library) first.
+        - **Fallback**: If on macOS and `pyttsx3` fails, it uses the system `say` command. This ensures robust speaking on Mac.
+- **`listen()`**:
+    - Uses `speech_recognition` to capture microphone input.
+    - Sends audio to Google's Speech Recognition API to convert to text.
+    - Returns the recognized text (lowercase).
+
+### C. `core/engine.py` (The Intelligence)
+Handles the conversation flow and connects to the Large Language Model (Groq).
+- **`JarvisEngine` Class**:
+    - **`__init__`**: Sets up the Groq client and system instructions.
+    - **`run_conversation(user_prompt)`**:
+        - Constructs a message history with the user's prompt.
+        - **Tool Injection**: Sends the descriptions of all loaded tools (from `registry`) to the LLM so it knows what it can do.
+        - **LLM Call**: Sends the request to Groq (Llama 3 model).
+        - **Tool Execution Logic**:
+            - If the LLM wants to use a tool (e.g., "get_weather"), it returns a "tool call".
+            - The engine parses this, finds the correct function in the `registry`, runs it, and feeds the result back to the LLM.
+            - The LLM then generates a final natural language response based on the tool's output.
+
+### D. `core/registry.py` (The Skill Manager)
+Manages the loading and tracking of skills.
+- **`SkillRegistry` Class**:
+    - **`load_skills(skills_dir)`**: Scans the `skills/` folder for `.py` files.
+    - **`_load_skill_from_file`**: Dynamically imports each Python file and looks for classes that inherit from `Skill`.
+    - **`register_skill`**: Adds the skill's tools and functions to the central dictionary.
+    - **`get_function(name)`**: Retrieving a function by name (used by the Engine).
+
+### E. `core/skill.py` (The Blueprint)
+An abstract base class that defines what a "Skill" looks like.
+- **`Skill` Class**:
+    - Enforces that every skill must provide:
+        - `get_tools()`: The JSON schema describing the tool for the LLM.
+        - `get_functions()`: The actual Python code to execute.
+        - `name`: A unique identifier.
+
+---
+
+## 3. Skills (The Capabilities)
+Located in `skills/`, these are the plugins that give JARVIS powers.
+
+- **`weather_ops.py`**:
+    - Fetches weather using OpenWeatherMap API.
+    - **Function**: `get_weather(city)`
+
+- **`email_ops.py`**:
+    - connects to Gmail via IMAP.
+    - **Functions**: `check_email()`, `fetch_recent_emails()`.
+
+- **`system_ops.py`**:
+    - Controls system volume and application launching.
+    - **Function**: `set_volume()`, `open_application()`.
+
+- **`text_ops.py`**:
+    - Features for summarizing text files.
+
+- **`datetime_ops.py`**:
+    - Returns current date and time.
+
+- **`screenshot_ops.py`**:
+    - Takes screenshots using macOS `screencapture`.
+
+- **`memory_ops.py`**:
+    - Saves and retrieves key-value pairs in a JSON file to give JARVIS "long-term memory".
+
+---
+
+## 4. How It All Connects
+
+1.  **Start**: You run `python3 main.py`.
+2.  **Load**: `main` asks `registry` to load all skills from `skills/`.
+3.  **Listen**: You say "Jarvis, what's the weather in Mumbai?".
+4.  **Process**: `engine` sends this text + tool definitions to Groq.
+5.  **Decision**: Groq sees the `get_weather` tool matches your request. It tells `engine` to call `get_weather(city="Mumbai")`.
+6.  **Action**: `engine` looks up `get_weather` in `registry` and executes the code in `weather_ops.py`.
+7.  **Result**: `weather_ops.py` returns specific data (e.g., "30°C, Sunny").
+8.  **Final Response**: `engine` gives this data back to Groq. Groq constructs a sentence: "It is currently 30 degrees Celsius and sunny in Mumbai."
+9.  **Speak**: `voice.speak` says this sentence aloud.

@@ -1,0 +1,15 @@
+groq>=0.4.2
+python-dotenv>=1.0.0
+requests>=2.31.0
+pyttsx3>=2.90
+SpeechRecognition>=3.8.1
+PyAudio>=0.2.11
+PyQt6>=6.6.0
+Pillow>=10.0.0
+opencv-python
+ultralytics
+torch
+torchvision
+pywhatkit
+selenium
+webdriver-manager

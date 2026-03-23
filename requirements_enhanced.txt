@@ -1,0 +1,41 @@
+# Core AI & API
+groq>=0.4.2
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Voice I/O
+pyttsx3>=2.90
+SpeechRecognition>=3.8.1
+PyAudio>=0.2.11
+
+# GUI
+PyQt6>=6.6.0
+
+# Image Processing
+Pillow>=10.0.0
+opencv-python>=4.8.0
+
+# Computer Vision (Optional - can be disabled)
+# ultralytics>=8.0.0
+# torch>=2.0.0
+# torchvision>=0.15.0
+
+# Web Automation
+selenium>=4.0.0
+webdriver-manager>=4.0.0
+pywhatkit>=5.4
+
+# System Monitoring
+psutil>=5.9.0
+
+# Async Support
+aiohttp>=3.9.0
+asyncio>=3.4.3
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Utilities
+colorama>=0.4.6
+tqdm>=4.65.0

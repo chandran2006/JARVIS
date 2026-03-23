@@ -1,0 +1,37 @@
+# Incomplete Tasks and Configuration Guide
+
+This file lists all incomplete tasks and missing configurations detected in the JARVIS codebase.
+
+## 1. Missing API Keys and Environment Variables
+Scan results indicate the following environment variables are required in your `.env` file:
+
+- [ ] **GROQ_API_KEY**: Required for `core/engine.py`. (Primary Brain)
+- [ ] **OPENWEATHERMAP_API_KEY**: Required for `skills/weather_ops.py`.
+- [ ] **DEFAULT_CITY**: Required for `skills/weather_ops.py` (Default: Mumbai).
+- [ ] **EMAIL_ADDRESS**: Required for `skills/email_ops.py`.
+- [ ] **EMAIL_PASSWORD**: Required for `skills/email_ops.py` (App Password recommended).
+- [ ] **EMAIL_IMAP_SERVER**: Required for `skills/email_ops.py` (e.g., `imap.gmail.com`).
+
+**How to Add:**
+1. Open `.env` file: `/Users/ishitchaudhari/Desktop/JARVIC/.env`
+2. Add the keys in the format shown in `remaining.txt`.
+
+## 2. Incomplete Features / TODOs
+- [ ] **Speaking Capability**: enhanced with macOS fallback (Completed).
+- [ ] **Email Skill**: Configuration required.
+- [ ] **Weather Skill**: Configuration required.
+
+## 3. Python Dependencies
+Ensure all dependencies are installed.
+Run:
+```bash
+pip3 install requests
+```
+(Other dependencies like `pyttsx3`, `SpeechRecognition`, `groq` should already be installed).
+
+## 4. Run Check
+Run the following command to start JARVIS:
+```bash
+python3 main.py
+```
+If you see "JARVIS: Jarvis Online", everything is working.
