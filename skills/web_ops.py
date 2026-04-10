@@ -10,57 +10,28 @@ class WebSkill(Skill):
 
     def get_tools(self) -> List[Dict[str, Any]]:
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_web",
-                    "description": (
-                        "Search the web using Google, YouTube, GitHub, or Wikipedia. "
-                        "Use engine='youtube' for videos, 'github' for code, "
-                        "'wikipedia' for facts, 'google' (default) for everything else."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query":  {"type": "string"},
-                            "engine": {
-                                "type": "string",
-                                "enum": ["google", "youtube", "github", "wikipedia"],
-                                "default": "google",
-                            },
-                        },
-                        "required": ["query"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "open_website",
-                    "description": "Open any website URL directly in the browser",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "url": {"type": "string", "description": "Full URL or domain name"}
-                        },
-                        "required": ["url"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_wikipedia_summary",
-                    "description": "Get a short Wikipedia summary for a topic",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "topic": {"type": "string"}
-                        },
-                        "required": ["topic"],
-                    },
-                },
-            },
+            {"type": "function", "function": {
+                "name": "search_web",
+                "description": "Search Google, YouTube, GitHub, or Wikipedia",
+                "parameters": {"type": "object",
+                               "properties": {
+                                   "query":  {"type": "string"},
+                                   "engine": {"type": "string",
+                                              "enum": ["google","youtube","github","wikipedia"],
+                                              "default": "google"}},
+                               "required": ["query"]}}},
+            {"type": "function", "function": {
+                "name": "open_website",
+                "description": "Open any URL in the browser",
+                "parameters": {"type": "object",
+                               "properties": {"url": {"type": "string"}},
+                               "required": ["url"]}}},
+            {"type": "function", "function": {
+                "name": "get_wikipedia_summary",
+                "description": "Get a short Wikipedia summary for any topic",
+                "parameters": {"type": "object",
+                               "properties": {"topic": {"type": "string"}},
+                               "required": ["topic"]}}},
         ]
 
     def get_functions(self) -> Dict[str, Callable]:
@@ -77,9 +48,8 @@ class WebSkill(Skill):
             "github":    f"https://github.com/search?q={query}",
             "wikipedia": f"https://en.wikipedia.org/wiki/Special:Search?search={query}",
         }
-        url = urls.get(engine, urls["google"])
         try:
-            webbrowser.open(url)
+            webbrowser.open(urls.get(engine, urls["google"]))
             return json.dumps({"status": "success",
                                "message": f"Opened {engine} search for {query}."})
         except Exception as e:
@@ -90,24 +60,24 @@ class WebSkill(Skill):
             url = "https://" + url
         try:
             webbrowser.open(url)
-            return json.dumps({"status": "success", "message": f"Opened {url}."})
+            return json.dumps({"status": "success",
+                               "message": f"Opened {url} in your browser."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
     def get_wikipedia_summary(self, topic: str) -> str:
         try:
             import requests
-            resp = requests.get(
-                "https://en.wikipedia.org/api/rest_v1/page/summary/" + topic.replace(" ", "_"),
-                timeout=8,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                extract = data.get("extract", "")
-                # Return first 2 sentences
-                sentences = extract.split(". ")
-                summary = ". ".join(sentences[:2]) + "."
-                return json.dumps({"status": "success", "summary": summary})
-            return json.dumps({"status": "error", "message": "Topic not found on Wikipedia."})
+            r = requests.get(
+                "https://en.wikipedia.org/api/rest_v1/page/summary/"
+                + topic.replace(" ", "_"),
+                timeout=8)
+            if r.status_code == 200:
+                extract = r.json().get("extract", "")
+                summary = ". ".join(extract.split(". ")[:2]) + "."
+                return json.dumps({"status": "success",
+                                   "message": summary})
+            return json.dumps({"status": "error",
+                               "message": f"I could not find a Wikipedia article on {topic}."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})

@@ -3,68 +3,64 @@ import sys
 import argparse
 import threading
 import time
-from dotenv import load_dotenv
 
-# Force UTF-8 output on Windows so print never crashes
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+from dotenv import load_dotenv
 load_dotenv()
 
 if not os.environ.get("GROQ_API_KEY"):
     print("ERROR: GROQ_API_KEY not found. Add it to your .env file.")
     sys.exit(1)
 
-from core.voice import speak, listen, beep
+from core.voice    import speak, listen
 from core.registry import SkillRegistry
-from core.engine import JarvisEngine
-from gui.app import run_gui, gui_set_status, gui_set_text
+from core.engine   import JarvisEngine
+from gui.app       import run_gui, gui_set_status, gui_set_text
 
-# ── wake-word config ──────────────────────────────────────────────────────────
-WAKE_WORDS  = ["jarvis", "hey jarvis", "ok jarvis", "yo jarvis", "hey jar", "jar vis"]
+# ── config ────────────────────────────────────────────────────────────────────
+WAKE_WORDS = ["jarvis", "hey jarvis", "ok jarvis", "yo jarvis", "hey jar"]
+EXIT_WORDS = ["quit", "exit", "shutdown", "goodbye", "bye", "turn off"]
 DIRECT_CMDS = [
-    "open", "search", "play", "set", "create", "write", "read",
-    "what", "who", "when", "where", "how", "why", "tell", "show",
-    "volume", "weather", "time", "date", "remember", "forget",
-    "hello", "hi", "thank",
+    "open","close","search","play","stop","set","create","write","read",
+    "delete","list","what","who","when","where","how","why","which",
+    "tell","show","give","find","get","volume","weather","time","date",
+    "day","remember","forget","recall","hello","hi","good morning",
+    "good evening","thank","thanks","take screenshot","lock","battery",
+    "system","calculate","convert","translate","note","remind",
 ]
-EXIT_WORDS  = ["quit", "exit", "shutdown", "goodbye", "bye"]
-# Filler words left behind after stripping wake word
-_FILLER     = {"hey", "ok", "yo", "jar", "vis", "jarvi"}
+_FILLER = {"hey","ok","yo","jar","vis","jarvi","okay"}
 
-def _clean(query: str) -> str:
-    """Strip wake words and leftover filler words."""
-    q = query.lower()
-    for w in sorted(WAKE_WORDS, key=len, reverse=True):  # longest first
+def _clean(q: str) -> str:
+    for w in sorted(WAKE_WORDS, key=len, reverse=True):
         q = q.replace(w, "")
-    # remove any single leftover filler tokens
-    tokens = [t for t in q.split() if t not in _FILLER]
-    return " ".join(tokens).strip()
+    return " ".join(t for t in q.split() if t not in _FILLER).strip()
 
-def _should_process(query: str) -> bool:
-    q = query.lower()
+def _should_process(q: str) -> bool:
     if any(w in q for w in WAKE_WORDS):
         return True
-    if any(q.startswith(c) or f" {c} " in q for c in DIRECT_CMDS):
-        return True
-    return False
+    return any(q.startswith(c) or f" {c} " in f" {q} " for c in DIRECT_CMDS)
 
-# ── main JARVIS loop ──────────────────────────────────────────────────────────
-def jarvis_loop(pause_event: threading.Event, registry: SkillRegistry, text_mode: bool):
+# ── main loop ─────────────────────────────────────────────────────────────────
+def jarvis_loop(pause_event: threading.Event,
+                registry: SkillRegistry,
+                text_mode: bool):
+
     engine = JarvisEngine(registry)
 
     if text_mode:
-        print("\nJARVIS online - text mode. Type your command.\n")
+        print("\nJARVIS online. Type your command.\n", flush=True)
     else:
-        speak("JARVIS online. All systems ready.")
+        speak("JARVIS online. All systems ready, sir.")
 
     while True:
         if pause_event.is_set():
             time.sleep(0.3)
             continue
 
-        # ── get input ─────────────────────────────────────────────────────────
+        # get input
         if text_mode:
             try:
                 raw = input("YOU: ").strip().lower()
@@ -76,73 +72,63 @@ def jarvis_loop(pause_event: threading.Event, registry: SkillRegistry, text_mode
             gui_set_status("IDLE")
 
         if not raw or raw == "none":
-            time.sleep(0.1)
+            time.sleep(0.05)
             continue
 
-        # ── exit ──────────────────────────────────────────────────────────────
+        raw = raw.lower().strip()
+        print(f"[Heard] {raw}", flush=True)
+
+        # exit
         if any(w in raw for w in EXIT_WORDS):
             speak("Shutting down. Goodbye, sir.")
             os._exit(0)
 
-        # ── filter ────────────────────────────────────────────────────────────
+        # filter
         if not _should_process(raw):
             continue
 
         query = _clean(raw)
 
-        # Wake word alone ("hey jarvis") -> beep + greet + listen for command
+        # wake word alone → greet
         if not query:
-            beep()
-            speak("Yes sir, I'm listening.")
-            gui_set_status("LISTENING")
-            raw2 = listen(timeout=6)
-            gui_set_status("IDLE")
-            if not raw2 or raw2 == "none":
-                continue
-            query = _clean(raw2)
-            if not query:
-                continue
+            speak("Yes sir, how can I help you?")
+            continue
 
-        # ── re-check pause ────────────────────────────────────────────────────
         if pause_event.is_set():
             continue
 
-        # ── run AI ────────────────────────────────────────────────────────────
-        try:
-            print(f"[Thinking] {query}")
-            gui_set_status("THINKING")
-            response = engine.run_conversation(query)
-            if pause_event.is_set():
-                gui_set_status("IDLE")
-                continue
-            if response:
-                gui_set_text(response)
-                if text_mode:
-                    print(f"JARVIS: {response}\n")
-                else:
-                    gui_set_status("SPEAKING")
-                    speak(response)
-                    gui_set_status("IDLE")
-        except Exception as e:
-            msg = "I hit an error processing that, sir."
-            print(f"[Loop Error] {e}")
-            gui_set_status("IDLE")
-            if text_mode:
-                print(f"JARVIS: {msg}\n")
-            else:
-                speak(msg)
+        # run AI
+        print(f"[Thinking] {query}", flush=True)
+        gui_set_status("THINKING")
 
-# ── entry point ───────────────────────────────────────────────────────────────
+        try:
+            response = engine.run_conversation(query)
+        except Exception as e:
+            print(f"[Engine Error] {e}", flush=True)
+            response = "I hit an error processing that, sir. Please try again."
+
+        gui_set_status("IDLE")
+        response = response.strip() if response else "I processed that, sir."
+        gui_set_text(response)
+
+        if text_mode:
+            print(f"JARVIS: {response}\n", flush=True)
+        else:
+            gui_set_status("SPEAKING")
+            speak(response)
+            gui_set_status("IDLE")
+
+# ── entry ─────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="JARVIS AI Assistant")
-    parser.add_argument("--text", action="store_true", help="Text-only mode (no voice)")
+    parser.add_argument("--text", action="store_true", help="Text-only mode")
     args = parser.parse_args()
 
     pause_event = threading.Event()
     context     = {"pause_event": pause_event}
 
-    print("\nJARVIS - Loading skills...")
-    registry = SkillRegistry()
+    print("\nJARVIS - Loading skills...", flush=True)
+    registry   = SkillRegistry()
     skills_dir = os.path.join(os.path.dirname(__file__), "skills")
     registry.load_skills(skills_dir, context=context)
 

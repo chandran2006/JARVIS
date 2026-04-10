@@ -10,38 +10,18 @@ class DateTimeSkill(Skill):
 
     def get_tools(self) -> List[Dict[str, Any]]:
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_current_time",
-                    "description": "Get the current time",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_current_date",
-                    "description": "Get today's date",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_current_datetime",
-                    "description": "Get both the current date and time together",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_day_of_week",
-                    "description": "Get what day of the week it is today",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-            },
+            {"type":"function","function":{"name":"get_current_time",
+             "description":"Get the current time",
+             "parameters":{"type":"object","properties":{},"required":[]}}},
+            {"type":"function","function":{"name":"get_current_date",
+             "description":"Get today's date",
+             "parameters":{"type":"object","properties":{},"required":[]}}},
+            {"type":"function","function":{"name":"get_current_datetime",
+             "description":"Get the current date and time together",
+             "parameters":{"type":"object","properties":{},"required":[]}}},
+            {"type":"function","function":{"name":"get_day_of_week",
+             "description":"Get what day of the week it is today",
+             "parameters":{"type":"object","properties":{},"required":[]}}},
         ]
 
     def get_functions(self) -> Dict[str, Callable]:
@@ -54,17 +34,19 @@ class DateTimeSkill(Skill):
 
     def get_current_time(self) -> str:
         now = datetime.now()
-        return json.dumps({"time": now.strftime("%I:%M %p")})
+        t   = now.strftime("%I:%M %p")
+        h   = now.hour
+        greeting = "Good morning" if h < 12 else "Good afternoon" if h < 17 else "Good evening"
+        return json.dumps({"status":"success","message":f"{greeting}, sir. The time is {t}."})
 
     def get_current_date(self) -> str:
-        now = datetime.now()
-        return json.dumps({"date": now.strftime("%A, %B %d, %Y")})
+        d = datetime.now().strftime("%A, %B %d, %Y")
+        return json.dumps({"status":"success","message":f"Today is {d}."})
 
     def get_current_datetime(self) -> str:
-        now = datetime.now()
-        return json.dumps({
-            "datetime": now.strftime("%A, %B %d, %Y at %I:%M %p"),
-        })
+        dt = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+        return json.dumps({"status":"success","message":f"It is {dt}."})
 
     def get_day_of_week(self) -> str:
-        return json.dumps({"day": datetime.now().strftime("%A")})
+        day = datetime.now().strftime("%A")
+        return json.dumps({"status":"success","message":f"Today is {day}."})

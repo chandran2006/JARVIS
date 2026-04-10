@@ -47,7 +47,12 @@ class SkillRegistry:
 
     def _register(self, skill: Skill):
         self._skills[skill.name] = skill
-        self._tools.extend(skill.get_tools())
+        # Deduplicate — skip any tool whose function name is already registered
+        existing = {t["function"]["name"] for t in self._tools}
+        for tool in skill.get_tools():
+            if tool["function"]["name"] not in existing:
+                self._tools.append(tool)
+                existing.add(tool["function"]["name"])
         self._functions.update(skill.get_functions())
 
     # ── accessors ─────────────────────────────────────────────────────────────

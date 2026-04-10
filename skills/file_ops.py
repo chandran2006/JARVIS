@@ -12,132 +12,92 @@ class FileSkill(Skill):
 
     def get_tools(self) -> List[Dict[str, Any]]:
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "create_file",
-                    "description": "Create a new text file on the Desktop with given content",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"},
-                            "content":  {"type": "string"},
-                        },
-                        "required": ["filename", "content"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "read_file",
-                    "description": "Read the contents of a file on the Desktop",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"}
-                        },
-                        "required": ["filename"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "append_to_file",
-                    "description": "Append text to an existing file on the Desktop",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"},
-                            "content":  {"type": "string"},
-                        },
-                        "required": ["filename", "content"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "delete_file",
-                    "description": "Delete a file from the Desktop",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"}
-                        },
-                        "required": ["filename"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "list_desktop_files",
-                    "description": "List all files currently on the Desktop",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-            },
+            {"type": "function", "function": {
+                "name": "create_file",
+                "description": "Create a text file on the Desktop",
+                "parameters": {"type": "object",
+                               "properties": {
+                                   "filename": {"type": "string"},
+                                   "content":  {"type": "string"}},
+                               "required": ["filename", "content"]}}},
+            {"type": "function", "function": {
+                "name": "read_file",
+                "description": "Read a file from the Desktop",
+                "parameters": {"type": "object",
+                               "properties": {"filename": {"type": "string"}},
+                               "required": ["filename"]}}},
+            {"type": "function", "function": {
+                "name": "append_to_file",
+                "description": "Append text to an existing Desktop file",
+                "parameters": {"type": "object",
+                               "properties": {
+                                   "filename": {"type": "string"},
+                                   "content":  {"type": "string"}},
+                               "required": ["filename", "content"]}}},
+            {"type": "function", "function": {
+                "name": "delete_file",
+                "description": "Delete a file from the Desktop",
+                "parameters": {"type": "object",
+                               "properties": {"filename": {"type": "string"}},
+                               "required": ["filename"]}}},
+            {"type": "function", "function": {
+                "name": "list_desktop_files",
+                "description": "List all files on the Desktop",
+                "parameters": {"type": "object", "properties": {}, "required": []}}},
         ]
 
     def get_functions(self) -> Dict[str, Callable]:
         return {
-            "create_file":       self.create_file,
-            "read_file":         self.read_file,
-            "append_to_file":    self.append_to_file,
-            "delete_file":       self.delete_file,
-            "list_desktop_files":self.list_desktop_files,
+            "create_file":        self.create_file,
+            "read_file":          self.read_file,
+            "append_to_file":     self.append_to_file,
+            "delete_file":        self.delete_file,
+            "list_desktop_files": self.list_desktop_files,
         }
 
-    def _path(self, filename: str) -> str:
-        # Prevent path traversal
-        safe = os.path.basename(filename)
-        return os.path.join(_DESKTOP, safe)
+    def _p(self, filename: str) -> str:
+        return os.path.join(_DESKTOP, os.path.basename(filename))
 
     def create_file(self, filename: str, content: str) -> str:
         try:
-            path = self._path(filename)
-            with open(path, "w", encoding="utf-8") as f:
+            with open(self._p(filename), "w", encoding="utf-8") as f:
                 f.write(content)
             return json.dumps({"status": "success",
-                               "message": f"File '{filename}' created on your Desktop."})
+                               "message": f"File {filename} created on your Desktop."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
     def read_file(self, filename: str) -> str:
         try:
-            path = self._path(filename)
-            if not os.path.exists(path):
+            p = self._p(filename)
+            if not os.path.exists(p):
                 return json.dumps({"status": "error",
-                                   "message": f"'{filename}' not found on Desktop."})
-            with open(path, "r", encoding="utf-8") as f:
+                                   "message": f"{filename} was not found on your Desktop."})
+            with open(p, "r", encoding="utf-8") as f:
                 content = f.read()
-            # Truncate very long files for voice
-            if len(content) > 500:
-                content = content[:500] + "... (truncated)"
-            return json.dumps({"status": "success", "content": content})
+            short = content[:300] + ("..." if len(content) > 300 else "")
+            return json.dumps({"status": "success", "message": short})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
     def append_to_file(self, filename: str, content: str) -> str:
         try:
-            path = self._path(filename)
-            with open(path, "a", encoding="utf-8") as f:
+            with open(self._p(filename), "a", encoding="utf-8") as f:
                 f.write("\n" + content)
             return json.dumps({"status": "success",
-                               "message": f"Added text to '{filename}'."})
+                               "message": f"Text added to {filename}."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
     def delete_file(self, filename: str) -> str:
         try:
-            path = self._path(filename)
-            if not os.path.exists(path):
+            p = self._p(filename)
+            if not os.path.exists(p):
                 return json.dumps({"status": "error",
-                                   "message": f"'{filename}' not found on Desktop."})
-            os.remove(path)
+                                   "message": f"{filename} was not found on your Desktop."})
+            os.remove(p)
             return json.dumps({"status": "success",
-                               "message": f"'{filename}' has been deleted."})
+                               "message": f"{filename} has been deleted."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 

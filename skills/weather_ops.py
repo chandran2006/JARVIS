@@ -14,29 +14,16 @@ class WeatherSkill(Skill):
 
     def get_tools(self) -> List[Dict[str, Any]]:
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get current weather for any city",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "city": {"type": "string",
-                                     "description": "City name, e.g. 'Mumbai' or 'London'"}
-                        },
-                        "required": ["city"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_local_weather",
-                    "description": "Get weather for the user's default/home city",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-            },
+            {"type": "function", "function": {
+                "name": "get_weather",
+                "description": "Get current weather for any city",
+                "parameters": {"type": "object",
+                               "properties": {"city": {"type": "string"}},
+                               "required": ["city"]}}},
+            {"type": "function", "function": {
+                "name": "get_local_weather",
+                "description": "Get weather for the default home city",
+                "parameters": {"type": "object", "properties": {}, "required": []}}},
         ]
 
     def get_functions(self) -> Dict[str, Callable]:
@@ -47,34 +34,26 @@ class WeatherSkill(Skill):
 
     def get_weather(self, city: str) -> str:
         if not self.api_key:
-            return json.dumps({
-                "status": "error",
-                "message": (
-                    "Weather API key not set. "
-                    "Add OPENWEATHERMAP_API_KEY to your .env file."
-                ),
-            })
+            return json.dumps({"status": "error",
+                               "message": "Weather API key not configured. "
+                                          "Add OPENWEATHERMAP_API_KEY to your .env file."})
         try:
             import requests
             r = requests.get(
                 "http://api.openweathermap.org/data/2.5/weather",
                 params={"q": city, "appid": self.api_key, "units": "metric"},
-                timeout=8,
-            )
+                timeout=8)
             if r.status_code == 404:
                 return json.dumps({"status": "error",
-                                   "message": f"I couldn't find weather data for {city}."})
+                                   "message": f"I could not find weather data for {city}."})
             r.raise_for_status()
             d = r.json()
-            return json.dumps({
-                "status":     "success",
-                "city":       d["name"],
-                "temperature": f"{d['main']['temp']:.0f}°C",
-                "feels_like": f"{d['main']['feels_like']:.0f}°C",
-                "conditions": d["weather"][0]["description"],
-                "humidity":   f"{d['main']['humidity']}%",
-                "wind_speed": f"{d['wind']['speed']} m/s",
-            })
+            msg = (f"In {d['name']} it is {d['main']['temp']:.0f} degrees Celsius, "
+                   f"feels like {d['main']['feels_like']:.0f}, "
+                   f"{d['weather'][0]['description']}, "
+                   f"humidity {d['main']['humidity']} percent, "
+                   f"wind speed {d['wind']['speed']} metres per second.")
+            return json.dumps({"status": "success", "message": msg})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
