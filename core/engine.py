@@ -1,130 +1,121 @@
 import os
 import json
 import re
+import time
 from groq import Groq
 from core.registry import SkillRegistry
+
+SYSTEM_PROMPT = """You are JARVIS, an advanced AI assistant — intelligent, concise, and slightly witty like Tony Stark's AI.
+Rules:
+- Always respond in natural spoken English (no markdown, no bullet points, no asterisks).
+- When you use a tool, wait for its result, then give ONE short spoken sentence as your final reply.
+- Never expose raw JSON or tool names to the user.
+- Be brief: 1-3 sentences max unless the user asks for detail.
+- Address the user as "sir" occasionally for personality."""
 
 class JarvisEngine:
     def __init__(self, registry: SkillRegistry):
         self.registry = registry
         self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        self.model_name = "llama-3.3-70b-versatile"
-        
-        self.system_instruction = (
-            "You are Jarvis, a helpful and precise AI assistant. "
-            "Use the provided tools to answer the user's request. "
-            "When using tools, output VALID JSON arguments only. "
-            "Do NOT output the tool call as XML or with an equals sign. "
-            "Just use the standard tool calling format provided by the API."
-        )
+        self.model = "llama-3.3-70b-versatile"
+        self.history = []          # rolling conversation history
+        self.max_history = 10      # keep last N user+assistant pairs
 
+    # ── public entry point ────────────────────────────────────────────────────
     def run_conversation(self, user_prompt: str) -> str:
-        messages = [
-            {"role": "system", "content": self.system_instruction},
-            {"role": "user", "content": user_prompt}
-        ]
-        
+        self.history.append({"role": "user", "content": user_prompt})
+        self._trim_history()
+
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.history
+        tools = self.registry.get_tools_schema()
+
         try:
-            tools_schema = self.registry.get_tools_schema()
-            # If no tools are loaded, don't pass tools argument (or pass empty? Groq might handle it)
-            # Better to pass None if empty to avoid api error if specific models dislike empty tool lists?
-            # Actually, let's pass it if it exists.
-            
-            completion_kwargs = {
-                "model": self.model_name,
-                "messages": messages,
-                "max_tokens": 200
-            }
-            
-            if tools_schema:
-                completion_kwargs["tools"] = tools_schema
-                completion_kwargs["tool_choice"] = "auto"
-            
-            response = self.client.chat.completions.create(**completion_kwargs)
+            reply = self._call(messages, tools, depth=0)
         except Exception as e:
-            # Handle tool_use_failed error from Groq
-            error_str = str(e)
-            if "tool_use_failed" in error_str and "failed_generation" in error_str:
-                try:
-                    # Extract failed generation from error message (it's inside the dict string)
-                    # We look for <function=NAME{ARGS}</function> pattern
-                    # Updated regex to handle optional equals sign, space, or other separators: function=NAME...{ARGS}
-                    match = re.search(r"<function=(\w+)(?:.*?)(?=\{)(\{.*?\})<\/function>", error_str)
-                    if match:
-                        func_name = match.group(1)
-                        func_args_str = match.group(2)
-                        print(f"DEBUG: Recovered failed tool call: {func_name} with {func_args_str}")
-                        
-                        # Manually construct a tool call-like object to trigger the execution loop
-                        # But wait, the loop expects response.choices[0].message.tool_calls
-                        # We can just execute it here and return the result?
-                        # Or reconstruct the response object?
-                        # Easiest: Execute directly here
-                        
-                        function_to_call = self.registry.get_function(func_name)
-                        if function_to_call:
-                            try:
-                                args = json.loads(func_args_str)
-                                res = function_to_call(**args)
-                                return str(res) # Return result directly as if it was the answer
-                            except Exception as exec_e:
-                                return f"Error executing recovered tool: {exec_e}"
-                except Exception as parse_e:
-                    print(f"Failed to recover tool call: {parse_e}")
+            reply = self._recover(e)
 
-            print(f"Groq API Error: {e}")
-            return "I am having trouble connecting to the brain, sir."
+        self.history.append({"role": "assistant", "content": reply})
+        self._trim_history()
+        return reply
 
-        response_message = response.choices[0].message
-        tool_calls = response_message.tool_calls
+    # ── recursive tool-call handler (max 3 hops) ─────────────────────────────
+    def _call(self, messages: list, tools: list, depth: int) -> str:
+        if depth > 3:
+            return "I've hit my processing limit on that request, sir."
 
-        # CASE 1: AI wants to use a tool (Action)
-        if tool_calls:
-            print("DEBUG: Executing Tool...")
-            messages.append(response_message)
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": 300,
+            "temperature": 0.6,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
 
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                print(f"DEBUG: AI attempting to call: {function_name}")
-                
-                function_to_call = self.registry.get_function(function_name)
-                
-                if not function_to_call:
-                    res = "Error: Tool not found."
-                    print(f"DEBUG: Tool {function_name} not found in registry.")
+        # Retry once on rate limit with a short wait
+        for attempt in range(2):
+            try:
+                response = self.client.chat.completions.create(**kwargs)
+                break
+            except Exception as e:
+                if "rate_limit" in str(e).lower() and attempt == 0:
+                    print("[Rate limit] Waiting 5 seconds...")
+                    time.sleep(5)
                 else:
-                    try:
-                        function_args = json.loads(tool_call.function.arguments)
-                        print(f"DEBUG: Tool arguments: {function_args}")
-                        
-                        if function_args is None:
-                            function_args = {}
-                            
-                        res = function_to_call(**function_args)
-                        print(f"DEBUG: Tool Output: {str(res)[:100]}...") # Truncate for readability
-                    except Exception as e:
-                        res = f"Error executing tool: {e}"
-                        print(f"DEBUG: Tool Execution Error: {e}")
+                    raise
 
-                
-                messages.append(
-                    {
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "name": function_name,
-                        "content": str(res),
-                    }
-                )
-            
-            # Get final spoken response after tool runs
-            # Remove tools arg for second call or keep it? Usually keep it in case it needs to chain.
-            # But for simplicity let's just complete.
-            second_response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages
-            )
-            return second_response.choices[0].message.content
-        
-        # CASE 2: AI wants to chat
-        else:
-            return response_message.content
+        msg = response.choices[0].message
+
+        if not msg.tool_calls:
+            return msg.content.strip()
+
+        # ── execute every tool call ───────────────────────────────────────────
+        messages = messages + [msg]
+        for tc in msg.tool_calls:
+            result = self._execute_tool(tc.function.name, tc.function.arguments)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "name": tc.function.name,
+                "content": result,
+            })
+
+        return self._call(messages, tools, depth + 1)
+
+    # ── execute a single tool ─────────────────────────────────────────────────
+    def _execute_tool(self, name: str, args_str: str) -> str:
+        fn = self.registry.get_function(name)
+        if not fn:
+            return json.dumps({"error": f"Tool '{name}' not found."})
+        try:
+            args = json.loads(args_str) if args_str else {}
+            result = fn(**args)
+            print(f"  [TOOL] {name}({args}) -> {str(result)[:120]}")
+            return str(result)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    # ── error recovery ────────────────────────────────────────────────────────
+    def _recover(self, error: Exception) -> str:
+        err = str(error)
+        # Groq sometimes returns a malformed tool call inside the error body
+        m = re.search(r"<function=(\w+).*?(\{.*?\})</function>", err, re.DOTALL)
+        if m:
+            result = self._execute_tool(m.group(1), m.group(2))
+            return result if result else "Task completed, sir."
+        if "rate_limit" in err.lower():
+            return "I'm being rate-limited right now. Please try again in a moment."
+        if "connection" in err.lower():
+            return "I can't reach my servers right now. Check your internet connection."
+        print(f"[Engine Error] {err}")
+        return "I ran into an unexpected issue. Please try again."
+
+    # ── keep history bounded ──────────────────────────────────────────────────
+    def _trim_history(self):
+        max_msgs = self.max_history * 2
+        if len(self.history) > max_msgs:
+            self.history = self.history[-max_msgs:]
+
+    def clear_history(self):
+        self.history.clear()

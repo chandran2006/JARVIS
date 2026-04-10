@@ -1,232 +1,124 @@
 import os
 import json
+from datetime import datetime
 from typing import List, Dict, Any, Callable
 from core.skill import Skill
 
+_MEMORY_FILE = os.path.expanduser("~/.jarvis_memory.json")
+
 class MemorySkill(Skill):
-    """Skill for persistent memory storage and retrieval."""
-    
-    def __init__(self):
-        # Store memory in user's home directory
-        self.memory_file = os.path.expanduser("~/.jarvic_memory.json")
-        self._ensure_memory_file()
-    
     @property
     def name(self) -> str:
         return "memory_skill"
 
-    def _ensure_memory_file(self):
-        """Create memory file if it doesn't exist."""
-        if not os.path.exists(self.memory_file):
-            with open(self.memory_file, 'w') as f:
-                json.dump({}, f)
-
-    def _load_memory(self) -> dict:
-        """Load memory from file."""
+    # ── helpers ───────────────────────────────────────────────────────────────
+    def _load(self) -> dict:
+        if not os.path.exists(_MEMORY_FILE):
+            return {}
         try:
-            with open(self.memory_file, 'r') as f:
+            with open(_MEMORY_FILE, "r") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
 
-    def _save_memory(self, memory: dict):
-        """Save memory to file."""
-        with open(self.memory_file, 'w') as f:
-            json.dump(memory, f, indent=2)
+    def _save(self, data: dict):
+        with open(_MEMORY_FILE, "w") as f:
+            json.dump(data, f, indent=2)
 
+    # ── tools ─────────────────────────────────────────────────────────────────
     def get_tools(self) -> List[Dict[str, Any]]:
         return [
             {
                 "type": "function",
                 "function": {
                     "name": "remember_fact",
-                    "description": "Store a piece of information in persistent memory for later recall",
+                    "description": "Save a fact to long-term memory (e.g. user's name, preference, birthday)",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "A short identifier for this memory (e.g., 'favorite_color', 'birthday')"
-                            },
-                            "value": {
-                                "type": "string",
-                                "description": "The information to remember"
-                            }
+                            "key":   {"type": "string", "description": "Short label, e.g. 'my_name'"},
+                            "value": {"type": "string", "description": "What to remember"},
                         },
-                        "required": ["key", "value"]
-                    }
-                }
+                        "required": ["key", "value"],
+                    },
+                },
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "retrieve_memory",
-                    "description": "Retrieve a previously stored piece of information from memory",
+                    "name": "recall_fact",
+                    "description": "Retrieve a previously saved fact from memory",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "item_name": {
-                                "type": "string",
-                                "description": "The name of the item to retrieve (e.g., 'user_name')"
-                            }
+                            "key": {"type": "string"}
                         },
-                        "required": ["item_name"]
-                    }
-                }
+                        "required": ["key"],
+                    },
+                },
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "list_all_memories",
-                    "description": "List all stored memories and their keys",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
+                    "name": "list_memories",
+                    "description": "List everything stored in memory",
+                    "parameters": {"type": "object", "properties": {}, "required": []},
+                },
             },
             {
                 "type": "function",
                 "function": {
                     "name": "forget_fact",
-                    "description": "Delete a specific memory from storage",
+                    "description": "Delete a specific memory entry",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "The identifier for the memory to delete"
-                            }
+                            "key": {"type": "string"}
                         },
-                        "required": ["key"]
-                    }
-                }
-            }
+                        "required": ["key"],
+                    },
+                },
+            },
         ]
 
     def get_functions(self) -> Dict[str, Callable]:
         return {
             "remember_fact": self.remember_fact,
-            "retrieve_memory": self.retrieve_memory,
-            "list_all_memories": self.list_all_memories,
-            "forget_fact": self.forget_fact
+            "recall_fact":   self.recall_fact,
+            "list_memories": self.list_memories,
+            "forget_fact":   self.forget_fact,
         }
 
+    # ── implementations ───────────────────────────────────────────────────────
     def remember_fact(self, key: str, value: str) -> str:
-        """
-        Store a fact in memory.
-        
-        Args:
-            key: Memory identifier
-            value: Value to store
-            
-        Returns:
-            JSON string with status
-        """
-        try:
-            memory = self._load_memory()
-            memory[key] = value
-            self._save_memory(memory)
-            
-            return json.dumps({
-                "status": "success",
-                "message": f"I will remember that {key} is {value}",
-                "key": key,
-                "value": value
-            })
-        except Exception as e:
-            return json.dumps({
-                "status": "error",
-                "message": f"Failed to store memory: {str(e)}"
-            })
+        mem = self._load()
+        mem[key.lower()] = {"value": value, "saved_at": datetime.now().isoformat()}
+        self._save(mem)
+        return json.dumps({"status": "success",
+                           "message": f"Got it. I'll remember that {key} is {value}."})
 
-    def retrieve_memory(self, item_name: str) -> str:
-        """
-        Retrieve a fact from memory.
-        
-        Args:
-            item_name: Memory identifier
-            
-        Returns:
-            JSON string with the stored value
-        """
-        try:
-            memory = self._load_memory()
-            
-            if item_name in memory:
-                return json.dumps({
-                    "status": "success",
-                    "item_name": item_name,
-                    "value": memory[item_name]
-                })
-            else:
-                return json.dumps({
-                    "status": "not_found",
-                    "message": f"I don't remember anything about '{item_name}'"
-                })
-        except Exception as e:
-            return json.dumps({
-                "status": "error",
-                "message": f"Failed to recall memory: {str(e)}"
-            })
+    def recall_fact(self, key: str) -> str:
+        mem = self._load()
+        entry = mem.get(key.lower())
+        if entry:
+            return json.dumps({"status": "success", "value": entry["value"]})
+        return json.dumps({"status": "not_found",
+                           "message": f"I don't have anything stored for '{key}'."})
 
-    def list_all_memories(self) -> str:
-        """
-        List all stored memories.
-        
-        Returns:
-            JSON string with all memories
-        """
-        try:
-            memory = self._load_memory()
-            
-            if not memory:
-                return json.dumps({
-                    "status": "success",
-                    "message": "I don't have any memories stored yet",
-                    "memories": {}
-                })
-            
-            return json.dumps({
-                "status": "success",
-                "count": len(memory),
-                "memories": memory
-            })
-        except Exception as e:
-            return json.dumps({
-                "status": "error",
-                "message": f"Failed to list memories: {str(e)}"
-            })
+    def list_memories(self) -> str:
+        mem = self._load()
+        if not mem:
+            return json.dumps({"memories": {},
+                               "message": "I have no memories stored yet."})
+        readable = {k: v["value"] for k, v in mem.items()}
+        return json.dumps({"memories": readable})
 
     def forget_fact(self, key: str) -> str:
-        """
-        Delete a memory.
-        
-        Args:
-            key: Memory identifier to delete
-            
-        Returns:
-            JSON string with status
-        """
-        try:
-            memory = self._load_memory()
-            
-            if key in memory:
-                del memory[key]
-                self._save_memory(memory)
-                
-                return json.dumps({
-                    "status": "success",
-                    "message": f"I have forgotten about '{key}'"
-                })
-            else:
-                return json.dumps({
-                    "status": "not_found",
-                    "message": f"I don't have any memory about '{key}' to forget"
-                })
-        except Exception as e:
-            return json.dumps({
-                "status": "error",
-                "message": f"Failed to forget memory: {str(e)}"
-            })
+        mem = self._load()
+        if key.lower() in mem:
+            del mem[key.lower()]
+            self._save(mem)
+            return json.dumps({"status": "success",
+                               "message": f"Done. I've forgotten about '{key}'."})
+        return json.dumps({"status": "not_found",
+                           "message": f"I don't have a memory called '{key}'."})

@@ -1,51 +1,58 @@
 import os
 import importlib.util
 import inspect
-from typing import Dict, List, Any, Callable
+from typing import Dict, List, Any, Callable, Optional
 from .skill import Skill
 
 class SkillRegistry:
     def __init__(self):
-        self.skills: Dict[str, Skill] = {}
-        self.tools_schema: List[Dict[str, Any]] = []
-        self.functions: Dict[str, Callable] = {}
+        self._skills:   Dict[str, Skill]    = {}
+        self._tools:    List[Dict[str, Any]] = []
+        self._functions: Dict[str, Callable] = {}
 
+    # ── load all .py files in a directory ────────────────────────────────────
     def load_skills(self, skills_dir: str, context: Dict[str, Any] = None):
-        """Dynamically load skills from the specified directory."""
         if not os.path.exists(skills_dir):
-            print(f"Skills directory not found: {skills_dir}")
+            print(f"[Registry] Skills directory not found: {skills_dir}")
             return
 
-        for filename in os.listdir(skills_dir):
-            if filename.endswith(".py") and filename != "__init__.py":
-                module_name = filename[:-3]
-                file_path = os.path.join(skills_dir, filename)
-                self._load_skill_from_file(module_name, file_path, context)
+        ok = fail = 0
+        for fname in sorted(os.listdir(skills_dir)):
+            if not fname.endswith(".py") or fname.startswith("_"):
+                continue
+            path = os.path.join(skills_dir, fname)
+            try:
+                self._load_file(fname[:-3], path, context)
+                ok += 1
+            except Exception as e:
+                print(f"  [SKIP] Skipped {fname}: {e}")
+                fail += 1
 
-    def _load_skill_from_file(self, module_name: str, file_path: str, context: Dict[str, Any] = None):
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            
-            for name, obj in inspect.getmembers(module):
-                if inspect.isclass(obj) and issubclass(obj, Skill) and obj is not Skill:
-                    try:
-                        skill_instance = obj()
-                        if context:
-                            skill_instance.initialize(context)
-                        self.register_skill(skill_instance)
-                        print(f"Loaded skill: {skill_instance.name}")
-                    except Exception as e:
-                        print(f"Failed to load skill {name}: {e}")
+        print(f"[Registry] {ok} skills loaded, {fail} skipped — {len(self._tools)} tools available.")
 
-    def register_skill(self, skill: Skill):
-        self.skills[skill.name] = skill
-        self.tools_schema.extend(skill.get_tools())
-        self.functions.update(skill.get_functions())
+    def _load_file(self, module_name: str, path: str, context):
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        if not spec or not spec.loader:
+            raise ImportError("Cannot create module spec")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
 
+        for _, obj in inspect.getmembers(mod, inspect.isclass):
+            if issubclass(obj, Skill) and obj is not Skill:
+                instance = obj()
+                if context:
+                    instance.initialize(context)
+                self._register(instance)
+                print(f"  [OK] {instance.name}")
+
+    def _register(self, skill: Skill):
+        self._skills[skill.name] = skill
+        self._tools.extend(skill.get_tools())
+        self._functions.update(skill.get_functions())
+
+    # ── accessors ─────────────────────────────────────────────────────────────
     def get_tools_schema(self) -> List[Dict[str, Any]]:
-        return self.tools_schema
+        return self._tools
 
-    def get_function(self, name: str) -> Callable:
-        return self.functions.get(name)
+    def get_function(self, name: str) -> Optional[Callable]:
+        return self._functions.get(name)
