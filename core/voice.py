@@ -10,25 +10,6 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# ── TTS ───────────────────────────────────────────────────────────────────────
-_engine   = pyttsx3.init()
-_tts_lock = threading.Lock()
-_speaking = False
-
-def _setup_voice():
-    _engine.setProperty("rate",   160)
-    _engine.setProperty("volume", 1.0)
-    voices = _engine.getProperty("voices")
-    for kw in ["david", "mark", "george", "daniel"]:
-        for v in voices:
-            if kw in v.name.lower():
-                _engine.setProperty("voice", v.id)
-                return
-    if voices:
-        _engine.setProperty("voice", voices[0].id)
-
-_setup_voice()
-
 # ── JSON → natural speech ─────────────────────────────────────────────────────
 def _to_speech(text: str) -> str:
     if "{" not in text:
@@ -65,39 +46,103 @@ def _to_speech(text: str) -> str:
     except Exception:
         return text.strip()
 
-# ── speak ─────────────────────────────────────────────────────────────────────
+# ── TTS worker — runs in its own thread, owns its own engine instance ─────────
+class _TTSWorker(threading.Thread):
+    """Dedicated TTS thread. pyttsx3 engine lives here — never touches the GUI thread."""
+
+    def __init__(self):
+        super().__init__(daemon=True, name="TTS-Worker")
+        self._queue   = []
+        self._lock    = threading.Lock()
+        self._event   = threading.Event()
+        self._speaking = False
+        self._engine  = None
+        self.start()
+
+    def run(self):
+        # Create engine inside this thread
+        self._engine = pyttsx3.init()
+        self._engine.setProperty("rate",   160)
+        self._engine.setProperty("volume", 1.0)
+        self._pick_voice()
+
+        while True:
+            self._event.wait()
+            self._event.clear()
+            while True:
+                with self._lock:
+                    if not self._queue:
+                        break
+                    text = self._queue.pop(0)
+                self._speaking = True
+                try:
+                    self._engine.say(text)
+                    self._engine.runAndWait()
+                except Exception as e:
+                    print(f"[TTS Error] {e}", flush=True)
+                finally:
+                    self._speaking = False
+
+    def _pick_voice(self):
+        voices = self._engine.getProperty("voices")
+        for kw in ["david", "mark", "george", "daniel"]:
+            for v in voices:
+                if kw in v.name.lower():
+                    self._engine.setProperty("voice", v.id)
+                    return
+        if voices:
+            self._engine.setProperty("voice", voices[0].id)
+
+    def say(self, text: str):
+        with self._lock:
+            self._queue.append(text)
+        self._event.set()
+
+    def is_speaking(self) -> bool:
+        return self._speaking or bool(self._queue)
+
+    def wait_done(self, timeout: float = 30):
+        deadline = time.time() + timeout
+        while self.is_speaking() and time.time() < deadline:
+            time.sleep(0.1)
+
+# Single global worker
+_worker = _TTSWorker()
+
+# ── public API ────────────────────────────────────────────────────────────────
 def speak(text: str):
-    global _speaking
+    """Speak text aloud. Non-blocking — returns immediately, audio plays in background thread."""
     text = _to_speech(str(text)).strip()
     if not text:
         return
     print(f"\nJARVIS: {text}\n", flush=True)
-    _speaking = True
-    try:
-        if sys.platform == "darwin":
+
+    if sys.platform == "darwin":
+        def _say():
             clean = text.replace('"', '\\"').replace("'", "")
             os.system(f'say -r 160 "{clean}"')
-        else:
-            with _tts_lock:
-                _engine.say(text)
-                _engine.runAndWait()
-    except Exception as e:
-        print(f"[TTS Error] {e}", flush=True)
-    finally:
-        _speaking = False
+        threading.Thread(target=_say, daemon=True).start()
+    else:
+        _worker.say(text)
 
 def is_speaking() -> bool:
-    return _speaking
+    return _worker.is_speaking()
+
+def wait_until_done():
+    """Block until TTS finishes speaking."""
+    _worker.wait_done()
 
 # ── listen ────────────────────────────────────────────────────────────────────
 def listen(timeout: int = 5, phrase_limit: int = 10) -> str:
+    """Record one utterance. Waits for TTS to finish first to avoid echo."""
+    # Wait for JARVIS to finish speaking
     waited = 0
-    while _speaking and waited < 8:
+    while is_speaking() and waited < 10:
         time.sleep(0.2)
         waited += 0.2
 
     r = sr.Recognizer()
-    r.pause_threshold         = 0.6
+    r.pause_threshold          = 0.6
     r.dynamic_energy_threshold = True
 
     try:
