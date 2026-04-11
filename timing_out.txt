@@ -1,0 +1,14 @@
+Import time: 0.343s
+Skills load time: 0.182s
+Engine init time: 0.356s
+Query 'hello' -> 0.628s -> "Good morning, sir. It's a pleasure to assist you today. How "
+Query 'what time is it' -> 0.300s -> "It's currently 10:45 AM."
+Query 'weather' -> 1.094s -> 'In Chennai, India it is 35 degrees Celsius, feels like 45 de'
+Query 'bitcoin price' -> 0.669s -> 'Bitcoin is at $72,657.00 (₹6,764,770), up 1.35% in the last '
+Query 'open youtube' -> 0.067s -> 'Opening youtube, sir.'
+Query 'tell me a joke' -> 0.926s -> 'What do you call a group of killer whales playing instrument'
+
+--- TTS timing ---
+speak(10 chars) -> 1.815s
+speak(18 chars) -> 2.007s
+speak(36 chars) -> 3.040s

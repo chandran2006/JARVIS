@@ -68,7 +68,7 @@ def _should_process(q: str) -> bool:
         "shutdown","music","camera","photo","email","youtube","google","wiki",
         "wikipedia","ip","clipboard","processes","trash","recycle","rename",
         "folder","make","take","check","run","launch","news","maps","route",
-        "directions","convert","calc","forecast","sleep","hibernate",
+        "directions","convert","calc","forecast","sleep","hibernate","unlock","wake",
         # Finance & productivity
         "stock","stocks","market","markets","crypto","bitcoin","btc","ethereum",
         "eth","nifty","sensex","nasdaq","gold","silver","oil","forex","currency",
@@ -103,10 +103,12 @@ def _respond(text: str, text_mode: bool):
     else:
         gui_set_status("SPEAKING")
         try:
-            speak(text, block=True)
+            speak(text, block=True)   # unmutes mic internally when done
         except Exception as e:
             print(f"[TTS Error] {e}", flush=True)
-        gui_set_status("IDLE")
+            from core.voice import _mic
+            _mic.unmute()
+        gui_set_status("LISTENING")
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 def jarvis_loop(pause_event: threading.Event,
@@ -114,6 +116,10 @@ def jarvis_loop(pause_event: threading.Event,
                 text_mode:   bool):
 
     engine = JarvisEngine(registry)
+
+    # Pre-warm Groq connection in background while greeting plays
+    threading.Thread(target=engine.prewarm, daemon=True).start()
+
     _respond(f"{_greeting()} JARVIS online. All systems ready. How can I help you?", text_mode)
 
     while True:
@@ -129,11 +135,10 @@ def jarvis_loop(pause_event: threading.Event,
                 break
         else:
             gui_set_status("LISTENING")
-            raw = listen()
+            raw = listen()   # returns instantly from always-on mic
+            if not raw or raw == "none":
+                continue
             gui_set_status("IDLE")
-
-        if not raw or raw == "none":
-            continue
 
         raw = raw.lower().strip()
         print(f"[Heard] {raw}", flush=True)

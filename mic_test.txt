@@ -1,0 +1,6 @@
+Mic alive: True
+Muted at start: False
+Muted after speak: False
+PASS: mic unmuted instantly after speak()
+Mic result queue size: 0
+Mic is live and ready with zero delay.

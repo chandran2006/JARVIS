@@ -1,0 +1,19 @@
+[PASS] IN : Good morning, sir. It is a pleasure, sir, to assist you today, sir.
+       OUT: Good morning, sir. It is a pleasure, to assist you today, .  [sir x1]
+
+[PASS] IN : Of course, sir. The time is 10 AM, sir.
+       OUT: Of course, sir. The time is 10 AM, .  [sir x1]
+
+[PASS] IN : Hello sir, how can I help you sir today sir?
+       OUT: Hello sir, how can I help you today ?  [sir x1]
+
+[PASS] IN : Done, sir.
+       OUT: Done, sir.  [sir x1]
+
+[PASS] IN : No mention here at all.
+       OUT: No mention here at all.  [sir x0]
+
+[PASS] IN : Sir, I will help you sir right away sir.
+       OUT: Sir, I will help you right away .  [sir x1]
+
+ALL PASS

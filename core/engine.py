@@ -6,6 +6,23 @@ import threading
 from groq import Groq
 from core.registry import SkillRegistry
 
+# ── Response cache — instant replies for repeated queries ─────────────────────
+_cache: dict = {}
+_cache_lock = threading.Lock()
+CACHE_TTL = 30  # seconds — time/weather change, so keep short
+
+def _cache_get(key: str):
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and (time.time() - entry["ts"]) < CACHE_TTL:
+            return entry["val"]
+    return None
+
+def _cache_set(key: str, val: str):
+    # Only cache intent-dispatched results (fast, deterministic)
+    with _cache_lock:
+        _cache[key] = {"val": val, "ts": time.time()}
+
 SYSTEM_PROMPT = """You are JARVIS — Chandran's personal AI. Brilliant, fast, witty, deeply knowledgeable.
 
 IRON LAWS:
@@ -14,7 +31,7 @@ IRON LAWS:
 3. NEVER say "retrieving", "fetching", "calling", "processing" — speak the result directly.
 4. After a tool runs, speak its result in 1-2 natural sentences.
 5. Max 2 sentences unless asked for more detail.
-6. Say "sir" at most once per reply.
+6. Use the word "sir" EXACTLY ONCE per reply, at most. Never say "sir" twice.
 7. Be warm, witty, confident. You are talking to your creator.
 8. Execute every command instantly — never ask for confirmation.
 9. For greetings respond warmly and ask how you can help.
@@ -45,6 +62,8 @@ _INTENTS = [
     # Lock/Sleep/Shutdown — before open
     (r"^lock(?:\s+(?:the\s+)?(?:screen|pc|computer|system|laptop|device))?$|^(?:lock|secure)\s+(?:the\s+)?(?:screen|pc|computer|system|laptop)$",
      "lock_screen", lambda m, q: {}),
+    (r"^(?:unlock|open|wake)(?:\s+(?:the\s+)?(?:screen|pc|computer|system|laptop|device))?$|^(?:unlock|wake\s+up)\s+(?:the\s+)?(?:screen|pc|computer|system|laptop)$",
+     "unlock_screen", lambda m, q: {}),
     (r"^(?:shutdown|shut\s+down|power\s+off)(?:\s+(?:the\s+)?(?:pc|computer|system|laptop))?$",
      "shutdown_pc", lambda m, q: {"restart": False}),
     (r"^restart(?:\s+(?:the\s+)?(?:pc|computer|system|laptop))?$",
@@ -308,7 +327,13 @@ class JarvisEngine:
         if result is not None:
             return result
 
-        # 2. Fall back to LLM with a focused tool subset
+        # 2. Check LLM cache for identical recent queries
+        cache_key = prompt.lower().strip()
+        cached = _cache_get(cache_key)
+        if cached:
+            return cached
+
+        # 3. Fall back to LLM with a focused tool subset
         with self._lock:
             self.history.append({"role": "user", "content": prompt})
             self._trim()
@@ -325,6 +350,17 @@ class JarvisEngine:
             self.history.append({"role": "assistant", "content": reply})
             self._trim()
         return reply
+
+    def prewarm(self):
+        """Send a silent dummy request to warm up the Groq connection."""
+        try:
+            self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=5,
+            )
+        except Exception:
+            pass
 
     # ── select only relevant tools (keeps schema under token limit) ───────────
     def _select_tools(self, prompt: str) -> list:
@@ -443,7 +479,24 @@ class JarvisEngine:
         for b in _BAD_PHRASES:
             if b in low:
                 return "I'm here, sir. What do you need?"
+        reply = self._enforce_one_sir(reply)
         return reply if reply else "I'm here, sir."
+
+    @staticmethod
+    def _enforce_one_sir(text: str) -> str:
+        """Keep only the first 'sir', remove the rest and clean up punctuation."""
+        # Split on 'sir' with optional surrounding punctuation/spaces
+        parts = re.split(r'(?i)[,\s]*\bsir\b[,\s]*', text)
+        if len(parts) <= 2:
+            return text  # zero or one sir — nothing to do
+        # Rejoin: first part + 'sir' + second part, then drop the rest
+        kept = parts[0].rstrip() + ', sir' + ('. ' if parts[1].lstrip().startswith(('.','!','?')) else ' ') + parts[1].lstrip(' ,')
+        tail = ' '.join(p.strip(' ,') for p in parts[2:] if p.strip(' ,'))
+        result = (kept.rstrip() + (' ' + tail if tail else '')).strip()
+        result = re.sub(r'\s+([,\.\?!])', r'\1', result)
+        result = re.sub(r',\s*\.', '.', result)
+        result = re.sub(r'\s{2,}', ' ', result).strip()
+        return result
 
     def _recover(self, error: Exception) -> str:
         err = str(error).lower()

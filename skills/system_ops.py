@@ -167,6 +167,12 @@ class SystemSkill(Skill):
                 "description": "Lock the computer screen",
                 "parameters": {"type": "object", "properties": {}, "required": []}}},
             {"type": "function", "function": {
+                "name": "unlock_screen",
+                "description": "Unlock the computer screen / lock screen by typing the password",
+                "parameters": {"type": "object", "properties": {
+                    "password": {"type": "string", "description": "Windows login password (optional)", "default": ""}
+                }, "required": []}}},
+            {"type": "function", "function": {
                 "name": "set_brightness",
                 "description": "Set screen brightness 0-100",
                 "parameters": {"type": "object", "properties": {"level": {"type": "integer"}}, "required": ["level"]}}},
@@ -213,6 +219,7 @@ class SystemSkill(Skill):
             "get_system_info":      self.get_system_info,
             "take_screenshot":      self.take_screenshot,
             "lock_screen":          self.lock_screen,
+            "unlock_screen":        self.unlock_screen,
             "set_brightness":       self.set_brightness,
             "shutdown_pc":          self.shutdown_pc,
             "get_running_processes":self.get_running_processes,
@@ -422,6 +429,69 @@ class SystemSkill(Skill):
             return json.dumps({"status": "success", "message": "Screen locked, sir."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
+
+    # ── unlock ────────────────────────────────────────────────────────────────
+    def unlock_screen(self, password: str = "") -> str:
+        """
+        Unlock the Windows lock screen by simulating keyboard input.
+        Presses any key to wake the screen, then types the password + Enter.
+        """
+        # Use password from .env if not passed directly
+        if not password:
+            password = os.environ.get("WINDOWS_PASSWORD", "")
+        try:
+            import time
+            import ctypes
+
+            # Step 1: Wake the screen (simulate a key press)
+            # Send VK_ESCAPE or mouse move to dismiss screensaver/wake display
+            ctypes.windll.user32.keybd_event(0x1B, 0, 0, 0)   # ESC down
+            ctypes.windll.user32.keybd_event(0x1B, 0, 2, 0)   # ESC up
+            time.sleep(0.5)
+
+            # Step 2: Move mouse slightly to ensure screen is active
+            ctypes.windll.user32.mouse_event(0x0001, 1, 1, 0, 0)
+            time.sleep(0.3)
+
+            if not password:
+                # No password — just press Enter (works for no-password accounts)
+                ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # Enter down
+                ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)  # Enter up
+                return json.dumps({"status": "success", "message": "Unlocking screen, sir."})
+
+            # Step 3: Type password using SendInput for reliability
+            import pyautogui
+            pyautogui.PAUSE = 0.05
+            time.sleep(0.5)
+            pyautogui.typewrite(password, interval=0.05)
+            time.sleep(0.1)
+            pyautogui.press('enter')
+            return json.dumps({"status": "success", "message": "Screen unlocked, sir."})
+
+        except ImportError:
+            # pyautogui not installed — use PowerShell SendKeys fallback
+            try:
+                import time
+                time.sleep(0.5)
+                safe_pwd = password.replace("'", "")
+                script = (
+                    "$wsh = New-Object -ComObject WScript.Shell; "
+                    "$wsh.SendKeys('{ESC}'); "
+                    f"Start-Sleep -Milliseconds 400; "
+                    f"$wsh.SendKeys('{safe_pwd}'); "
+                    "$wsh.SendKeys('{ENTER}')"
+                )
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                    timeout=10, capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                return json.dumps({"status": "success", "message": "Screen unlocked, sir."})
+            except Exception as e:
+                return json.dumps({"status": "error", "message": str(e)})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
 
     # ── brightness ────────────────────────────────────────────────────────────
     def set_brightness(self, level: int) -> str:
