@@ -3,6 +3,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Callable
 from core.skill import Skill
 
+def _greet() -> str:
+    h = datetime.now().hour
+    if 5  <= h < 12: return "Good morning"
+    if 12 <= h < 17: return "Good afternoon"
+    if 17 <= h < 21: return "Good evening"
+    return "Good night"
+
 class DateTimeSkill(Skill):
     @property
     def name(self) -> str:
@@ -35,18 +42,20 @@ class DateTimeSkill(Skill):
     def get_current_time(self) -> str:
         now = datetime.now()
         t   = now.strftime("%I:%M %p")
-        h   = now.hour
-        greeting = "Good morning" if h < 12 else "Good afternoon" if h < 17 else "Good evening"
-        return json.dumps({"status":"success","message":f"{greeting}, sir. The time is {t}."})
+        return json.dumps({"status":"success",
+                           "message":f"{_greet()}, sir. The current time is {t}."})
 
     def get_current_date(self) -> str:
         d = datetime.now().strftime("%A, %B %d, %Y")
-        return json.dumps({"status":"success","message":f"Today is {d}."})
+        return json.dumps({"status":"success",
+                           "message":f"{_greet()}, sir. Today is {d}."})
 
     def get_current_datetime(self) -> str:
         dt = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
-        return json.dumps({"status":"success","message":f"It is {dt}."})
+        return json.dumps({"status":"success",
+                           "message":f"{_greet()}, sir. It is {dt}."})
 
     def get_day_of_week(self) -> str:
         day = datetime.now().strftime("%A")
-        return json.dumps({"status":"success","message":f"Today is {day}."})
+        return json.dumps({"status":"success",
+                           "message":f"{_greet()}, sir. Today is {day}."})

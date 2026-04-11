@@ -1,0 +1,65 @@
+
+=== TRACING MAIN.PY FLOW ===
+
+--- INPUT: 'jarvis' ---
+  _should_process: True
+  _strip_wake result: ''
+  -> EMPTY after strip — only greeting sent
+--- INPUT: 'hello' ---
+  _should_process: True
+  _strip_wake result: 'hello'
+  ENGINE REPLY: "Good morning, sir! It's great to be online and ready to assist you. What can I do for you today?"
+
+--- INPUT: 'hey jarvis' ---
+  _should_process: True
+  _strip_wake result: ''
+  -> EMPTY after strip — only greeting sent
+--- INPUT: 'hey jarvis what time is it' ---
+  _should_process: True
+  _strip_wake result: 'what time is it'
+  ENGINE REPLY: 'The current time is 10:45 AM.'
+
+--- INPUT: 'what time is it' ---
+  _should_process: True
+  _strip_wake result: 'what time is it'
+  ENGINE REPLY: 'The current time is 10:46 AM.'
+
+--- INPUT: 'jarvis what is the time' ---
+  _should_process: True
+  _strip_wake result: 'what is the time'
+  ENGINE REPLY: 'Good afternoon, sir. The current time is 02:11 PM.'
+
+--- INPUT: 'time' ---
+  _should_process: True
+  _strip_wake result: 'time'
+  ENGINE REPLY: 'Good afternoon, sir. The current time is 02:11 PM.'
+
+--- INPUT: 'what is today' ---
+  _should_process: True
+  _strip_wake result: 'what is today'
+  ENGINE REPLY: "Today's date is April 11, 2024."
+
+--- INPUT: 'hi' ---
+  _should_process: True
+  _strip_wake result: ''
+  -> EMPTY after strip — only greeting sent
+--- INPUT: 'how are you' ---
+  _should_process: True
+  _strip_wake result: 'how are you'
+  ENGINE REPLY: "I'm functioning within optimal parameters, sir. All systems are go, and I'm ready to tackle any task you may have."
+
+--- INPUT: 'tell me a joke' ---
+  _should_process: True
+  _strip_wake result: 'tell me a joke'
+  ENGINE REPLY: 'What kind of magic do cows believe in? ... MOODOO.'
+
+--- INPUT: 'weather' ---
+  _should_process: True
+  _strip_wake result: 'weather'
+  ENGINE REPLY: 'In Chennai, India it is 35 degrees Celsius, feels like 45 degrees, sunny, humidity is 60 percent, and wind speed is 23 kilometres per hour.'
+
+--- INPUT: 'open youtube' ---
+  _should_process: True
+  _strip_wake result: 'open youtube'
+  ENGINE REPLY: 'Opening youtube, sir.'
+

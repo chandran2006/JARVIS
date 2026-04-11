@@ -1,0 +1,29 @@
+=== TEST 1: Raw pyttsx3 ===
+Voices: ['Microsoft David Desktop - English (United States)', 'Microsoft Zira Desktop - English (United States)']
+Raw pyttsx3: OK
+
+=== TEST 2: TTS Worker (voice.py) ===
+Worker alive: True
+Worker busy: False
+Calling speak('Test two. Voice module working.')...
+speak() returned: OK
+
+=== TEST 3: _respond from main.py ===
+  _respond text = 'Test three. The respond function is working correctly.'
+  speak() completed OK
+
+=== TEST 4: Engine reply + speak ===
+
+  Query: 'hello'
+  Reply: "Good morning, sir. It's a pleasure to be at your service. How can I assist you today?"
+  Spoken: OK
+
+  Query: 'what time is it'
+  Reply: 'The current time is 10:45 AM.'
+  Spoken: OK
+
+  Query: 'tell me a joke'
+  Reply: 'Why do bees have sticky hair? ... Because they use honey combs!'
+  Spoken: OK
+
+=== ALL TESTS DONE ===

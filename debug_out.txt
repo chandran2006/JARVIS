@@ -1,0 +1,12 @@
+Q: hello
+A: Good morning, sir. It's great to be online again. How can I assist you today?
+
+Q: what time is it
+A: The current time is 10:45 AM.
+
+Q: weather in Chennai
+A: In Chennai, India it is 35 degrees Celsius, feels like 45 degrees, sunny, humidity is 60 percent, and wind speed is 23 kilometres per hour.
+
+Q: bitcoin price
+A: Bitcoin is at $72,770.00 (₹6,775,304), up 1.57% in the last 24 hours.
+

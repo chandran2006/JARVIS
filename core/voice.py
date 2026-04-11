@@ -1,154 +1,144 @@
 import os
 import sys
 import json
-import time
 import threading
-import pyttsx3
+import queue
+import subprocess
+import tempfile
 import speech_recognition as sr
 
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
-# ── JSON → natural speech ─────────────────────────────────────────────────────
+# ── JSON → plain text ─────────────────────────────────────────────────────────
 def _to_speech(text: str) -> str:
-    if "{" not in text:
-        return text.strip()
+    text = str(text).strip()
+    if not text or "{" not in text:
+        return text
     try:
         d = json.loads(text)
         if "message" in d:
             return str(d["message"]).strip()
         if d.get("status") == "error":
             return d.get("message", "Something went wrong.")
-        if "datetime" in d:
-            return f"It is {d['datetime']}."
-        if "time" in d:
-            return f"The current time is {d['time']}."
-        if "date" in d:
-            return f"Today is {d['date']}."
-        if "day" in d:
-            return f"Today is {d['day']}."
-        if "value" in d:
-            return str(d["value"])
-        if "memories" in d:
-            m = d["memories"]
-            if not m:
-                return "I have no memories stored yet."
-            parts = [f"{k} is {v}" for k, v in list(m.items())[:5]]
-            return "Here is what I remember: " + ", ".join(parts) + "."
-        if "content" in d:
-            c = str(d["content"])
-            return c[:300] if len(c) > 300 else c
+        for k in ("datetime", "time", "date", "day", "value", "content"):
+            if k in d:
+                return str(d[k])
         if d.get("status") == "success":
             return "Done, sir."
         pairs = [f"{k} is {v}" for k, v in d.items() if k != "status" and v]
-        return ". ".join(pairs) if pairs else "Task completed."
+        return ". ".join(pairs) if pairs else "Done, sir."
     except Exception:
-        return text.strip()
+        return text
 
-# ── TTS worker — runs in its own thread, owns its own engine instance ─────────
+# ── TTS Worker — runs pyttsx3 in its OWN subprocess, no COM/Qt conflict ───────
+_SPEAKER_SCRIPT = """
+import sys, pyttsx3
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+text = sys.stdin.read().strip()
+if text:
+    e = pyttsx3.init()
+    e.setProperty('rate', 160)
+    e.setProperty('volume', 1.0)
+    voices = e.getProperty('voices')
+    # Pick David (male) voice
+    for v in voices:
+        if 'david' in v.name.lower() or 'mark' in v.name.lower():
+            e.setProperty('voice', v.id)
+            break
+    e.say(text)
+    e.runAndWait()
+"""
+
 class _TTSWorker(threading.Thread):
-    """Dedicated TTS thread. pyttsx3 engine lives here — never touches the GUI thread."""
-
     def __init__(self):
         super().__init__(daemon=True, name="TTS-Worker")
-        self._queue   = []
-        self._lock    = threading.Lock()
-        self._event   = threading.Event()
-        self._speaking = False
-        self._engine  = None
+        self._q       = queue.Queue()
+        self._busy    = False
+        self._done    = threading.Event()
+        self._done.set()
         self.start()
 
     def run(self):
-        # Create engine inside this thread
-        self._engine = pyttsx3.init()
-        self._engine.setProperty("rate",   160)
-        self._engine.setProperty("volume", 1.0)
-        self._pick_voice()
-
         while True:
-            self._event.wait()
-            self._event.clear()
-            while True:
-                with self._lock:
-                    if not self._queue:
-                        break
-                    text = self._queue.pop(0)
-                self._speaking = True
-                try:
-                    self._engine.say(text)
-                    self._engine.runAndWait()
-                except Exception as e:
-                    print(f"[TTS Error] {e}", flush=True)
-                finally:
-                    self._speaking = False
+            text = self._q.get()
+            if text is None:
+                break
+            self._busy = True
+            self._done.clear()
+            try:
+                self._speak_subprocess(text)
+            except Exception as ex:
+                print(f"[TTS] {ex}", flush=True)
+            finally:
+                self._busy = False
+                self._done.set()
 
-    def _pick_voice(self):
-        voices = self._engine.getProperty("voices")
-        for kw in ["david", "mark", "george", "daniel"]:
-            for v in voices:
-                if kw in v.name.lower():
-                    self._engine.setProperty("voice", v.id)
-                    return
-        if voices:
-            self._engine.setProperty("voice", voices[0].id)
+    def _speak_subprocess(self, text: str):
+        """Speak via a fresh subprocess — completely isolated from Qt/COM."""
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "-c", _SPEAKER_SCRIPT],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            )
+            proc.communicate(input=text.encode("utf-8", errors="replace"), timeout=30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        except Exception as ex:
+            print(f"[TTS subprocess] {ex}", flush=True)
 
     def say(self, text: str):
-        with self._lock:
-            self._queue.append(text)
-        self._event.set()
+        self._done.clear()
+        self._q.put(text)
 
-    def is_speaking(self) -> bool:
-        return self._speaking or bool(self._queue)
+    def is_busy(self) -> bool:
+        return self._busy or not self._q.empty()
 
-    def wait_done(self, timeout: float = 30):
-        deadline = time.time() + timeout
-        while self.is_speaking() and time.time() < deadline:
-            time.sleep(0.1)
+    def wait(self, timeout: float = 30):
+        self._done.wait(timeout=timeout)
 
-# Single global worker
+
 _worker = _TTSWorker()
 
-# ── public API ────────────────────────────────────────────────────────────────
-def speak(text: str):
-    """Speak text aloud. Non-blocking — returns immediately, audio plays in background thread."""
-    text = _to_speech(str(text)).strip()
+# ── Public API ────────────────────────────────────────────────────────────────
+def speak(text: str, block: bool = True):
+    text = _to_speech(text).strip()
     if not text:
         return
-    print(f"\nJARVIS: {text}\n", flush=True)
+    try:
+        print(f"\nJARVIS: {text}\n", flush=True)
+    except Exception:
+        pass
+    _worker.say(text)
+    if block:
+        _worker.wait()
 
-    if sys.platform == "darwin":
-        def _say():
-            clean = text.replace('"', '\\"').replace("'", "")
-            os.system(f'say -r 160 "{clean}"')
-        threading.Thread(target=_say, daemon=True).start()
-    else:
-        _worker.say(text)
 
 def is_speaking() -> bool:
-    return _worker.is_speaking()
+    return _worker.is_busy()
 
-def wait_until_done():
-    """Block until TTS finishes speaking."""
-    _worker.wait_done()
 
-# ── listen ────────────────────────────────────────────────────────────────────
-def listen(timeout: int = 5, phrase_limit: int = 10) -> str:
-    """Record one utterance. Waits for TTS to finish first to avoid echo."""
-    # Wait for JARVIS to finish speaking
-    waited = 0
-    while is_speaking() and waited < 10:
-        time.sleep(0.2)
-        waited += 0.2
+def listen(timeout: int = 7, phrase_limit: int = 12) -> str:
+    if is_speaking():
+        _worker.wait(timeout=20)
 
     r = sr.Recognizer()
-    r.pause_threshold          = 0.6
+    r.pause_threshold          = 0.7
+    r.non_speaking_duration    = 0.4
     r.dynamic_energy_threshold = True
+    r.energy_threshold         = 250
 
     try:
         with sr.Microphone() as src:
             print("[Listening...]", flush=True)
-            r.adjust_for_ambient_noise(src, duration=0.3)
+            r.adjust_for_ambient_noise(src, duration=0.2)
             audio = r.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
         print("[Recognising...]", flush=True)
         text = r.recognize_google(audio, language="en-IN")

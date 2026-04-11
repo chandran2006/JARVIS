@@ -2,7 +2,9 @@ import sys
 import math
 import random
 from datetime import datetime
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
+                              QVBoxLayout, QLabel, QPushButton, QListWidget,
+                              QListWidgetItem, QSizePolicy)
 from PyQt6.QtCore    import Qt, QTimer, QPointF, QRectF, pyqtSignal, QObject
 from PyQt6.QtGui     import QPainter, QColor, QPen, QBrush, QPolygonF, QLinearGradient, QRadialGradient, QFont
 
@@ -16,6 +18,14 @@ C = {
     "white":     QColor("#FFFFFF"),
     "black":     QColor("#000000"),
     "dim":       QColor("#003333"),
+}
+
+_LABEL_STYLE = {
+    "IDLE":      "color:#00FFFF;",
+    "LISTENING": "color:#00FF88;",
+    "THINKING":  "color:#FFA500;",
+    "SPEAKING":  "color:#CC88FF;",
+    "PAUSED":    "color:#FF4444;",
 }
 
 # ── thread → GUI signal bridge ────────────────────────────────────────────────
@@ -32,7 +42,7 @@ def gui_set_text(t: str):   _bridge.sig_text.emit(t)
 class HexPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(200)
+        self.setFixedWidth(180)
         self._hexes = [
             {"r": r, "c": c,
              "a": random.randint(20, 160),
@@ -41,7 +51,6 @@ class HexPanel(QWidget):
             for r in range(7) for c in range(3)
         ]
         self._col = C["IDLE"]
-        QTimer(self).timeout.connect(self._tick) or None
         t = QTimer(self); t.timeout.connect(self._tick); t.start(55)
 
     def set_color(self, col: QColor): self._col = col
@@ -56,7 +65,7 @@ class HexPanel(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        sz, ox, oy = 28, 20, 30
+        sz, ox, oy = 26, 18, 30
         for h in self._hexes:
             col = QColor(self._col); col.setAlpha(int(h["a"]))
             p.setPen(QPen(col, 1.2))
@@ -72,11 +81,11 @@ class HexPanel(QWidget):
 class VoiceBars(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(55)
-        self._bars   = [0] * 32
+        self.setFixedHeight(50)
+        self._bars   = [0] * 40
         self._active = False
         self._col    = C["IDLE"]
-        t = QTimer(self); t.timeout.connect(self._tick); t.start(40)
+        t = QTimer(self); t.timeout.connect(self._tick); t.start(35)
 
     def set_active(self, v: bool, col: QColor = None):
         self._active = v
@@ -84,9 +93,9 @@ class VoiceBars(QWidget):
 
     def _tick(self):
         if self._active:
-            self._bars = [random.randint(5, 50) for _ in self._bars]
+            self._bars = [random.randint(5, 48) for _ in self._bars]
         else:
-            self._bars = [max(0, b - 5) for b in self._bars]
+            self._bars = [max(0, b - 4) for b in self._bars]
         self.update()
 
     def paintEvent(self, _):
@@ -102,9 +111,11 @@ class VoiceBars(QWidget):
 
 # ── arc reactor ───────────────────────────────────────────────────────────────
 class Reactor(QWidget):
+    clicked = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(320, 320)
+        self.setMinimumSize(300, 300)
         self._a1 = self._a2 = self._a3 = 0.0
         self._phase  = 0.0
         self._status = "IDLE"
@@ -122,6 +133,10 @@ class Reactor(QWidget):
             self._phase = (self._phase + 0.06) % (2 * math.pi)
         self.update()
 
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -129,11 +144,11 @@ class Reactor(QWidget):
         col = C["PAUSED"] if self._paused else C.get(self._status, C["IDLE"])
 
         # glow
-        gr = QRadialGradient(cx, cy, 100)
-        gc = QColor(col); gc.setAlpha(50)
+        gr = QRadialGradient(cx, cy, 110)
+        gc = QColor(col); gc.setAlpha(55)
         gr.setColorAt(0, gc); gr.setColorAt(1, QColor(0,0,0,0))
         p.setBrush(QBrush(gr)); p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QPointF(cx, cy), 140, 140)
+        p.drawEllipse(QPointF(cx, cy), 145, 145)
 
         p.setBrush(Qt.BrushStyle.NoBrush)
 
@@ -159,15 +174,50 @@ class Reactor(QWidget):
         p.drawEllipse(QPointF(0,0), 57, 57); p.restore()
 
         # core
-        pulse = math.sin(self._phase) * 5 if not self._paused else 0
+        pulse = math.sin(self._phase) * 6 if not self._paused else 0
         p.setPen(Qt.PenStyle.NoPen); p.setBrush(QBrush(col))
-        p.drawEllipse(QPointF(cx, cy), 20 + pulse, 20 + pulse)
+        p.drawEllipse(QPointF(cx, cy), 22 + pulse, 22 + pulse)
 
         # state label
         p.setPen(QPen(C["black"]))
         f = QFont("Consolas", 7, QFont.Weight.Bold); p.setFont(f)
-        p.drawText(QRectF(cx-40, cy+24, 80, 16),
+        p.drawText(QRectF(cx-40, cy+26, 80, 16),
                    Qt.AlignmentFlag.AlignCenter, self._status)
+
+# ── command history panel ─────────────────────────────────────────────────────
+class HistoryPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(220)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setSpacing(4)
+
+        title = QLabel("COMMAND LOG")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("color:#004444;font-family:Consolas;font-size:9px;")
+        layout.addWidget(title)
+
+        self._list = QListWidget()
+        self._list.setStyleSheet(
+            "QListWidget{background:#000000;border:1px solid #003333;"
+            "color:#00AAAA;font-family:Consolas;font-size:9px;}"
+            "QListWidget::item{padding:2px;border-bottom:1px solid #001111;}"
+            "QScrollBar:vertical{background:#001111;width:6px;}"
+            "QScrollBar::handle:vertical{background:#003333;}")
+        self._list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        layout.addWidget(self._list)
+
+    def add_entry(self, role: str, text: str):
+        prefix = "YOU" if role == "user" else "JAR"
+        col    = "#00FF88" if role == "user" else "#CC88FF"
+        item   = QListWidgetItem(f"[{prefix}] {text[:40]}")
+        item.setForeground(QColor(col))
+        self._list.addItem(item)
+        self._list.scrollToBottom()
+        # Keep max 50 entries
+        while self._list.count() > 50:
+            self._list.takeItem(0)
 
 # ── main window ───────────────────────────────────────────────────────────────
 class JarvisGUI(QMainWindow):
@@ -178,7 +228,7 @@ class JarvisGUI(QMainWindow):
         self._status     = "IDLE"
 
         self.setWindowTitle("JARVIS")
-        self.resize(1100, 660)
+        self.resize(1200, 700)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("background-color:#000000;")
@@ -192,36 +242,64 @@ class JarvisGUI(QMainWindow):
         self._top.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._top.setStyleSheet(
             "color:#00FFFF;background:#001111;font-family:Consolas;"
-            "font-size:11px;padding:6px;")
+            "font-size:11px;padding:6px;letter-spacing:1px;")
         vbox.addWidget(self._top)
 
         # ── main row ──────────────────────────────────────────────────────────
         row = QHBoxLayout(); row.setSpacing(0)
-        self._hex_l  = HexPanel()
+        self._hex_l   = HexPanel()
         self._reactor = Reactor()
-        self._hex_r  = HexPanel()
+        self._reactor.clicked.connect(self._toggle_pause)
+        self._hex_r   = HexPanel()
+        self._history = HistoryPanel()
+
         row.addWidget(self._hex_l)
         row.addWidget(self._reactor, stretch=2)
         row.addWidget(self._hex_r)
+        row.addWidget(self._history)
         vbox.addLayout(row, stretch=1)
 
         # ── voice bars ────────────────────────────────────────────────────────
         self._bars = VoiceBars()
         vbox.addWidget(self._bars)
 
-        # ── last heard ────────────────────────────────────────────────────────
-        self._heard = QLabel("...")
-        self._heard.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._heard.setStyleSheet(
-            "color:#006666;font-family:Consolas;font-size:11px;"
-            "background:transparent;padding:2px;")
-        vbox.addWidget(self._heard)
+        # ── status row ────────────────────────────────────────────────────────
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(8, 2, 8, 2)
+
+        self._status_label = QLabel("● IDLE")
+        self._status_label.setStyleSheet("color:#00FFFF;font-family:Consolas;font-size:11px;")
+        status_row.addWidget(self._status_label)
+
+        status_row.addStretch()
+
+        # Interrupt button
+        self._btn_interrupt = QPushButton("■ STOP")
+        self._btn_interrupt.setFixedSize(80, 24)
+        self._btn_interrupt.setStyleSheet(
+            "QPushButton{background:#1a0000;color:#FF4444;border:1px solid #FF4444;"
+            "font-family:Consolas;font-size:10px;border-radius:3px;}"
+            "QPushButton:hover{background:#330000;}")
+        self._btn_interrupt.clicked.connect(self._interrupt)
+        status_row.addWidget(self._btn_interrupt)
+
+        # Pause button
+        self._btn_pause = QPushButton("⏸ PAUSE")
+        self._btn_pause.setFixedSize(80, 24)
+        self._btn_pause.setStyleSheet(
+            "QPushButton{background:#001a1a;color:#00FFFF;border:1px solid #00FFFF;"
+            "font-family:Consolas;font-size:10px;border-radius:3px;}"
+            "QPushButton:hover{background:#003333;}")
+        self._btn_pause.clicked.connect(self._toggle_pause)
+        status_row.addWidget(self._btn_pause)
+
+        vbox.addLayout(status_row)
 
         # ── transcript ────────────────────────────────────────────────────────
-        self._transcript = QLabel("JARVIS ONLINE")
+        self._transcript = QLabel("JARVIS ONLINE — READY")
         self._transcript.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._transcript.setWordWrap(True)
-        self._transcript.setMaximumHeight(70)
+        self._transcript.setMaximumHeight(65)
         self._transcript.setStyleSheet(
             "color:#00FFFF;font-family:Consolas;font-size:13px;"
             "background:transparent;padding:4px;")
@@ -238,39 +316,59 @@ class JarvisGUI(QMainWindow):
         _bridge.sig_text.connect(self._on_text)
 
         self._drag_pos = None
+        self._last_text = ""
 
     def _update_top(self):
-        now   = datetime.now().strftime("%H:%M:%S")
+        now   = datetime.now().strftime("%A  %H:%M:%S")
         state = "PAUSED" if self._paused else self._status
         self._top.setText(
-            f"JARVIS  |  {now}  |  {state}  |  SPACE=Pause  ESC=Quit")
+            f"J.A.R.V.I.S  ◆  {now}  ◆  {state}  ◆  SPACE=Pause  I=Interrupt  ESC=Quit")
 
     def _on_status(self, s: str):
         self._status = s
         col = C.get(s, C["IDLE"])
         self._reactor.set_status(s)
-        self._bars.set_active(s == "LISTENING", col)
+        self._bars.set_active(s in ("LISTENING", "SPEAKING"), col)
         self._hex_l.set_color(col)
         self._hex_r.set_color(col)
+        style = _LABEL_STYLE.get(s, "color:#00FFFF;")
+        self._status_label.setStyleSheet(f"{style}font-family:Consolas;font-size:11px;")
+        self._status_label.setText(f"● {s}")
         self._update_top()
 
     def _on_text(self, t: str):
-        self._transcript.setText(t[:130] + ("..." if len(t) > 130 else ""))
+        self._transcript.setText(t[:140] + ("..." if len(t) > 140 else ""))
+        # Add to history — detect role by checking if it changed
+        if t != self._last_text:
+            role = "jarvis" if self._status in ("SPEAKING", "THINKING") else "user"
+            self._history.add_entry(role, t)
+            self._last_text = t
 
     def _toggle_pause(self):
         self._paused = not self._paused
         self._reactor.set_paused(self._paused)
         if self._paused:
             self.pause_event.set()
+            self._btn_pause.setText("▶ RESUME")
         else:
             self.pause_event.clear()
+            self._btn_pause.setText("⏸ PAUSE")
         self._update_top()
+
+    def _interrupt(self):
+        try:
+            from core.voice import interrupt_speech
+            interrupt_speech()
+        except Exception:
+            pass
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Escape:
             self.close()
         elif e.key() == Qt.Key.Key_Space:
             self._toggle_pause()
+        elif e.key() == Qt.Key.Key_I:
+            self._interrupt()
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -282,6 +380,7 @@ class JarvisGUI(QMainWindow):
 
     def mouseReleaseEvent(self, _):
         self._drag_pos = None
+
 
 def run_gui(pause_event):
     app = QApplication(sys.argv)

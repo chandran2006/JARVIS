@@ -1,81 +1,49 @@
-from core.skill import Skill
-import cv2
 import os
+import json
 import time
+from typing import List, Dict, Any, Callable
+from core.skill import Skill
+
+_DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
 
 class CameraSkill(Skill):
-    """
-    Skill for capturing photos using the default camera.
-    """
-    
     @property
-    def name(self):
+    def name(self) -> str:
         return "camera_skill"
-        
-    def get_tools(self):
+
+    def get_tools(self) -> List[Dict[str, Any]]:
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "take_photo",
-                    "description": "Take a photo using the webcam.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                    },
-                },
-            }
+            {"type": "function", "function": {
+                "name": "take_photo",
+                "description": "Take a photo using the webcam and save it to the Desktop",
+                "parameters": {"type": "object", "properties": {}, "required": []}}}
         ]
 
-    def get_functions(self):
-        return {
-            "take_photo": self.take_photo
-        }
+    def get_functions(self) -> Dict[str, Callable]:
+        return {"take_photo": self.take_photo}
 
-    def take_photo(self, **kwargs):
-
-        """
-        Captures a single frame from the default camera and saves it.
-        """
+    def take_photo(self) -> str:
         try:
-            # Open the camera (index 0 is usually the default)
+            import cv2
             cap = cv2.VideoCapture(0)
-            
             if not cap.isOpened():
-                return "Error: Could not open camera."
-            
-            # Show preview for 3 seconds so user can pose (Console only)
-            print("Taking photo in 3...")
-            time.sleep(1)
-            print("2...")
-            time.sleep(1)
-            print("1...")
-            time.sleep(1)
-            print("CHEESE!")
-            
-            # Capture final frame
+                return json.dumps({"status": "error",
+                                   "message": "Could not open the camera, sir."})
+            # Warm up camera (first few frames are dark)
+            for _ in range(5):
+                cap.read()
             ret, frame = cap.read()
             cap.release()
-            
             if not ret:
-                return "Error: Failed to capture image."
-            
-            # Ensure assets directory exists
-            assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
-            os.makedirs(assets_dir, exist_ok=True)
-            
-            timestamp = int(time.time())
-            filename = f"photo_{timestamp}.jpg"
-            filepath = os.path.join(assets_dir, filename)
-            
+                return json.dumps({"status": "error",
+                                   "message": "Failed to capture image from camera, sir."})
+            fname    = f"photo_{int(time.time())}.jpg"
+            filepath = os.path.join(_DESKTOP, fname)
             cv2.imwrite(filepath, frame)
-            
-            # Show the taken photo for a brief moment or just leave it closed
-            # cv2.imshow("Captured Photo", frame)
-            # cv2.waitKey(2000)
-            # cv2.destroyAllWindows()
-            
-            return f"Photo taken and saved to {filepath}"
+            return json.dumps({"status": "success",
+                               "message": f"Photo taken and saved to your Desktop as {fname}, sir."})
+        except ImportError:
+            return json.dumps({"status": "error",
+                               "message": "OpenCV is not installed. Run pip install opencv-python."})
         except Exception as e:
-            return f"Error taking photo: {str(e)}"
+            return json.dumps({"status": "error", "message": f"Camera error: {e}"})

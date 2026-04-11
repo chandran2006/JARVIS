@@ -1,0 +1,49 @@
+=== TTS TEST ===
+Voices: 2
+  Microsoft David Desktop - English (United States) | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_DAVID_11.0
+  Microsoft Zira Desktop - English (United States) | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_ZIRA_11.0
+TTS: OK
+
+=== MICROPHONE TEST ===
+Microphones found: 18
+  [0] Microsoft Sound Mapper - Input
+  [1] Microphone (Realtek(R) Audio)
+  [2] Microsoft Sound Mapper - Output
+  [3] Speakers (Realtek(R) Audio)
+  [4] Primary Sound Capture Driver
+  [5] Microphone (Realtek(R) Audio)
+  [6] Primary Sound Driver
+  [7] Speakers (Realtek(R) Audio)
+  [8] Speakers (Realtek(R) Audio)
+  [9] Microphone (Realtek(R) Audio)
+  [10] Microphone (Realtek HD Audio Mic input)
+  [11] Stereo Mix (Realtek HD Audio Stereo input)
+  [12] Speakers 1 (Realtek HD Audio output with SST)
+  [13] Speakers 2 (Realtek HD Audio output with SST)
+  [14] PC Speaker (Realtek HD Audio output with SST)
+  [15] Headphones ()
+  [16] Headphones ()
+  [17] Headphones ()
+Mic list: OK
+
+=== VOICE MODULE TEST ===
+voice module imported: OK
+speak() called: OK
+
+=== MAIN LOOP SIMULATION ===
+Q: hello
+A: Good morning, sir. It's a pleasure to be at your service. How can I assist you today?
+
+  -> spoken OK
+
+Q: what time is it
+A: The current time is 9:45 AM.
+
+  -> spoken OK
+
+Q: what is today's date
+A: Could not calculate: invalid syntax (<string>, line 0)
+
+  -> spoken OK
+
+=== DONE ===
