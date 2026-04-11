@@ -1,0 +1,16 @@
+write_code loaded: True
+explain_code loaded: True
+
+write_code result: success
+Code preview:
+Here is the python code:
+def fibonacci(n):
+    fib_sequence = [0, 1]
+    while len(fib_sequence) < n:
+        fib_sequence.append(fib_sequence[-1] + fib_sequence[-2])
+    return fib_sequence
+
+n = 10
+print(fibonacci(n))
+
+play_youtube: success - Playing shape of you ed sheeran on YouTube, sir.

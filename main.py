@@ -74,6 +74,8 @@ def _should_process(q: str) -> bool:
         "eth","nifty","sensex","nasdaq","gold","silver","oil","forex","currency",
         "exchange","price","timer","alarm","translate","define","joke","coin",
         "dice","gainers","losers","reliance","tcs","infosys","dogecoin","solana",
+        "code","coding","program","script","function","debug","fix","optimize",
+        "write","generate","solve","complete","explain","listen","put",
     }
     return q in _TRIGGERS or any(q.startswith(c + " ") for c in _TRIGGERS)
 
@@ -120,7 +122,12 @@ def jarvis_loop(pause_event: threading.Event,
     # Pre-warm Groq connection in background while greeting plays
     threading.Thread(target=engine.prewarm, daemon=True).start()
 
-    _respond(f"{_greeting()} JARVIS online. All systems ready. How can I help you?", text_mode)
+    h = datetime.now().hour
+    if 5  <= h < 12: _startup = "Good morning, sir. JARVIS online. All systems ready."
+    elif 12 <= h < 17: _startup = "Good afternoon, sir. JARVIS online. All systems ready."
+    elif 17 <= h < 21: _startup = "Good evening, sir. JARVIS online. All systems ready."
+    else: _startup = "Good night, sir. JARVIS online. All systems ready."
+    _respond(_startup, text_mode)
 
     while True:
         if pause_event.is_set():
@@ -157,7 +164,7 @@ def jarvis_loop(pause_event: threading.Event,
 
         # Wake word alone or just "hi" / "hello" with no command
         if not query or query in ("hi", "hello", "hey"):
-            _respond(f"{_greeting()} How can I help you, sir?", text_mode)
+            _respond(_greeting(), text_mode)
             continue
 
         if pause_event.is_set():

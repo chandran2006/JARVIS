@@ -1,0 +1,13 @@
+=== BRAVE SEARCH ===
+  C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe: False
+  C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe: False
+  C:\Users\ganes\AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe: True
+  C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe: False
+Registry brave path: ''
+Default browser: 'MSEdgeHTM'
+where brave.exe: ''
+Glob found: C:\Users\ganes\AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe
+
+=== UNLOCK TEST ===
+Lock screen active (logonui running): False
+SendKeys test: SendKeys OK err=

@@ -1,6 +1,9 @@
 import sys
 import math
 import random
+import threading
+import urllib.parse
+import requests
 from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
                               QVBoxLayout, QLabel, QPushButton, QListWidget,
@@ -32,11 +35,83 @@ _LABEL_STYLE = {
 class _Bridge(QObject):
     sig_status = pyqtSignal(str)
     sig_text   = pyqtSignal(str)
+    sig_ticker = pyqtSignal(str)
 
 _bridge = _Bridge()
 
 def gui_set_status(s: str): _bridge.sig_status.emit(s)
 def gui_set_text(t: str):   _bridge.sig_text.emit(t)
+
+# ── live ticker data fetcher ──────────────────────────────────────────────────
+_TICKER_SYMBOLS = {
+    "Gold":    "GC=F",
+    "Silver":  "SI=F",
+    "Nifty":   "^NSEI",
+    "Sensex":  "^BSESN",
+    "S&P500":  "^GSPC",
+    "Nasdaq":  "^IXIC",
+    "Crude":   "CL=F",
+}
+
+# Symbols priced in USD that need INR conversion
+_USD_SYMBOLS = {"Gold", "Silver", "Crude", "S&P500", "Nasdaq"}
+
+def _get_usd_inr() -> float:
+    try:
+        r = requests.get("https://api.exchangerate-api.com/v4/latest/USD",
+                         timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        return r.json().get("rates", {}).get("INR", 84.0)
+    except Exception:
+        return 84.0
+
+def _inr_fmt(value: float) -> str:
+    """Format a rupee value in Indian style: crore / lakh / thousand."""
+    if value >= 1_00_00_000:
+        return f"\u20b9{value/1_00_00_000:.2f}Cr"
+    if value >= 1_00_000:
+        return f"\u20b9{value/1_00_000:.2f}L"
+    if value >= 1_000:
+        return f"\u20b9{value/1_000:.2f}K"
+    return f"\u20b9{value:,.2f}"
+
+def _fetch_ticker() -> str:
+    usd_inr = _get_usd_inr()
+    parts = []
+    for label, sym in _TICKER_SYMBOLS.items():
+        try:
+            r = requests.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(sym)}",
+                params={"interval": "1d", "range": "1d"},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=5
+            )
+            if r.status_code == 200:
+                meta  = r.json()["chart"]["result"][0]["meta"]
+                price = meta.get("regularMarketPrice", 0)
+                prev  = meta.get("chartPreviousClose", price)
+                pct   = ((price - prev) / prev * 100) if prev else 0
+                arrow = "\u25b2" if pct >= 0 else "\u25bc"
+                # Convert USD-priced assets to INR
+                inr_price = price * usd_inr if label in _USD_SYMBOLS else price
+                parts.append(f"{label}: {_inr_fmt(inr_price)}  {arrow}{abs(pct):.2f}%")
+        except Exception:
+            pass
+    return "     \u25c6     ".join(parts) if parts else ""
+
+def _ticker_worker():
+    """Background thread: fetch prices every 60 s and push to GUI."""
+    while True:
+        try:
+            text = _fetch_ticker()
+            if text:
+                _bridge.sig_ticker.emit(text)
+        except Exception:
+            pass
+        threading.Event().wait(60)   # refresh every 60 seconds
+
+# Start ticker thread once at import time
+_ticker_thread = threading.Thread(target=_ticker_worker, daemon=True)
+_ticker_thread.start()
 
 # ── hexagon side panel ────────────────────────────────────────────────────────
 class HexPanel(QWidget):
@@ -245,6 +320,21 @@ class JarvisGUI(QMainWindow):
             "font-size:11px;padding:6px;letter-spacing:1px;")
         vbox.addWidget(self._top)
 
+        # ── live ticker bar ───────────────────────────────────────────────────
+        self._ticker_label = QLabel("  ⟳ Loading live prices...")
+        self._ticker_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._ticker_label.setStyleSheet(
+            "color:#FFD700;background:#0a0a00;font-family:Consolas;"
+            "font-size:10px;padding:3px 8px;border-bottom:1px solid #333300;")
+        vbox.addWidget(self._ticker_label)
+
+        # Scroll ticker text left every 40 ms
+        self._ticker_text  = ""
+        self._ticker_offset = 0
+        self._scroll_timer  = QTimer(self)
+        self._scroll_timer.timeout.connect(self._scroll_ticker)
+        self._scroll_timer.start(50)
+
         # ── main row ──────────────────────────────────────────────────────────
         row = QHBoxLayout(); row.setSpacing(0)
         self._hex_l   = HexPanel()
@@ -314,9 +404,21 @@ class JarvisGUI(QMainWindow):
         # ── signals ───────────────────────────────────────────────────────────
         _bridge.sig_status.connect(self._on_status)
         _bridge.sig_text.connect(self._on_text)
+        _bridge.sig_ticker.connect(self._on_ticker)
 
         self._drag_pos = None
         self._last_text = ""
+
+    def _on_ticker(self, text: str):
+        self._ticker_text   = text + "          "
+        self._ticker_offset = 0
+
+    def _scroll_ticker(self):
+        if not self._ticker_text:
+            return
+        display = self._ticker_text[self._ticker_offset:] + "   " + self._ticker_text[:self._ticker_offset]
+        self._ticker_label.setText(display[:120])
+        self._ticker_offset = (self._ticker_offset + 1) % len(self._ticker_text)
 
     def _update_top(self):
         now   = datetime.now().strftime("%A  %H:%M:%S")

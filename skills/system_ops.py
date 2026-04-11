@@ -53,7 +53,7 @@ _WIN_APPS = {
     "whatsapp":             ["whatsapp.exe", r"C:\Users\{user}\AppData\Local\WhatsApp\WhatsApp.exe"],
     "telegram":             ["telegram.exe", r"C:\Users\{user}\AppData\Roaming\Telegram Desktop\Telegram.exe"],
     "obs":                  ["obs64.exe", r"C:\Program Files\obs-studio\bin\64bit\obs64.exe"],
-    "brave":                ["brave.exe", r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"],
+    "brave":                ["C:\\Users\\ganes\\AppData\\Local\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"],
     "opera":                ["opera.exe", r"C:\Users\{user}\AppData\Local\Programs\Opera\opera.exe"],
     "winrar":               ["winrar.exe", r"C:\Program Files\WinRAR\WinRAR.exe"],
     "7zip":                 ["7zFM.exe", r"C:\Program Files\7-Zip\7zFM.exe"],
@@ -235,47 +235,29 @@ class SystemSkill(Skill):
     def set_volume(self, level: int) -> str:
         level = max(0, min(100, int(level)))
         try:
-            if _OS == "Windows":
-                try:
-                    from ctypes import cast, POINTER
-                    from comtypes import CLSCTX_ALL
-                    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-                    devices   = AudioUtilities.GetSpeakers()
-                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                    vol = cast(interface, POINTER(IAudioEndpointVolume))
-                    vol.SetMasterVolumeLevelScalar(level / 100, None)
-                except Exception:
-                    script = (
-                        f"$wsh = New-Object -ComObject WScript.Shell;"
-                        f"1..50 | ForEach-Object {{ $wsh.SendKeys([char]174) }};"
-                        f"$s = [int]({level}/2);"
-                        f"1..$s | ForEach-Object {{ $wsh.SendKeys([char]175) }}"
-                    )
-                    subprocess.run(["powershell", "-c", script], capture_output=True, timeout=8)
-            elif _OS == "Darwin":
-                os.system(f"osascript -e 'set volume output volume {level}'")
-            else:
-                subprocess.run(["amixer", "set", "Master", f"{level}%"], check=True)
+            # PowerShell: mute all then raise to target level
+            script = (
+                f"$wsh = New-Object -ComObject WScript.Shell;"
+                f"1..50 | ForEach-Object {{ $wsh.SendKeys([char]174) }};"
+                f"$steps = [int]({level}/2);"
+                f"if ($steps -gt 0) {{ 1..$steps | ForEach-Object {{ $wsh.SendKeys([char]175) }} }}"
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, timeout=15
+            )
             return json.dumps({"status": "success", "message": f"Volume set to {level} percent, sir."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
     def mute_volume(self, mute: bool = True) -> str:
         try:
-            if _OS == "Windows":
-                try:
-                    from ctypes import cast, POINTER
-                    from comtypes import CLSCTX_ALL
-                    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-                    devices   = AudioUtilities.GetSpeakers()
-                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                    vol = cast(interface, POINTER(IAudioEndpointVolume))
-                    vol.SetMute(1 if mute else 0, None)
-                except Exception:
-                    # Fallback: send mute key via PowerShell
-                    key = "173"  # VK_VOLUME_MUTE
-                    script = f"$wsh=New-Object -ComObject WScript.Shell; $wsh.SendKeys([char]{key})"
-                    subprocess.run(["powershell", "-c", script], capture_output=True, timeout=5)
+            key = "174"  # VK_VOLUME_MUTE
+            script = f"$wsh=New-Object -ComObject WScript.Shell; $wsh.SendKeys([char]{key})"
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, timeout=5
+            )
             action = "muted" if mute else "unmuted"
             return json.dumps({"status": "success", "message": f"Volume {action}, sir."})
         except Exception as e:
@@ -326,12 +308,15 @@ class SystemSkill(Skill):
                 return json.dumps({"status": "success",
                                    "message": f"Opening {site_part} in {browser_part}, sir."})
 
-        # Pure website name → open in default browser (reuses existing tab if possible)
+        # Pure website name → open in Brave
         if key in _WEBSITES:
-            import webbrowser
-            webbrowser.open(_WEBSITES[key])
-            return json.dumps({"status": "success",
-                               "message": f"Opening {key}, sir."})
+            _BRAVE = r"C:\Users\ganes\AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe"
+            if os.path.exists(_BRAVE):
+                subprocess.Popen([_BRAVE, _WEBSITES[key]], creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                import webbrowser
+                webbrowser.open(_WEBSITES[key])
+            return json.dumps({"status": "success", "message": f"Opening {key} in Brave, sir."})
 
         try:
             if _OS == "Windows":
@@ -432,63 +417,50 @@ class SystemSkill(Skill):
 
     # ── unlock ────────────────────────────────────────────────────────────────
     def unlock_screen(self, password: str = "") -> str:
-        """
-        Unlock the Windows lock screen by simulating keyboard input.
-        Presses any key to wake the screen, then types the password + Enter.
-        """
-        # Use password from .env if not passed directly
         if not password:
             password = os.environ.get("WINDOWS_PASSWORD", "")
         try:
             import time
             import ctypes
 
-            # Step 1: Wake the screen (simulate a key press)
-            # Send VK_ESCAPE or mouse move to dismiss screensaver/wake display
-            ctypes.windll.user32.keybd_event(0x1B, 0, 0, 0)   # ESC down
-            ctypes.windll.user32.keybd_event(0x1B, 0, 2, 0)   # ESC up
-            time.sleep(0.5)
-
-            # Step 2: Move mouse slightly to ensure screen is active
-            ctypes.windll.user32.mouse_event(0x0001, 1, 1, 0, 0)
-            time.sleep(0.3)
+            # Wake display
+            ctypes.windll.user32.mouse_event(0x0001, 5, 5, 0, 0)
+            time.sleep(0.4)
+            ctypes.windll.user32.keybd_event(0x1B, 0, 0, 0)  # ESC
+            ctypes.windll.user32.keybd_event(0x1B, 0, 2, 0)
+            time.sleep(0.6)
 
             if not password:
-                # No password — just press Enter (works for no-password accounts)
-                ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # Enter down
-                ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)  # Enter up
+                ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # Enter
+                ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)
                 return json.dumps({"status": "success", "message": "Unlocking screen, sir."})
 
-            # Step 3: Type password using SendInput for reliability
-            import pyautogui
-            pyautogui.PAUSE = 0.05
-            time.sleep(0.5)
-            pyautogui.typewrite(password, interval=0.05)
-            time.sleep(0.1)
-            pyautogui.press('enter')
-            return json.dumps({"status": "success", "message": "Screen unlocked, sir."})
-
-        except ImportError:
-            # pyautogui not installed — use PowerShell SendKeys fallback
-            try:
-                import time
-                time.sleep(0.5)
-                safe_pwd = password.replace("'", "")
-                script = (
-                    "$wsh = New-Object -ComObject WScript.Shell; "
-                    "$wsh.SendKeys('{ESC}'); "
-                    f"Start-Sleep -Milliseconds 400; "
-                    f"$wsh.SendKeys('{safe_pwd}'); "
-                    "$wsh.SendKeys('{ENTER}')"
-                )
-                subprocess.run(
-                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                    timeout=10, capture_output=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-                return json.dumps({"status": "success", "message": "Screen unlocked, sir."})
-            except Exception as e:
-                return json.dumps({"status": "error", "message": str(e)})
+            # Use a SYSTEM-level scheduled task to type on the secure desktop
+            # This bypasses the session isolation that blocks normal SendKeys
+            safe_pwd = password.replace("'", "").replace('"', "").replace("&", "").replace(";", "")
+            ps_script = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "Start-Sleep -Milliseconds 800; "
+                f"[System.Windows.Forms.SendKeys]::SendWait('{safe_pwd}'); "
+                "Start-Sleep -Milliseconds 300; "
+                "[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')"
+            )
+            # Register as scheduled task running as SYSTEM (reaches secure desktop)
+            task_cmd = (
+                f'$action = New-ScheduledTaskAction -Execute "powershell.exe" '
+                f'-Argument "-NoProfile -WindowStyle Hidden -Command {chr(39)}{ps_script}{chr(39)}"; '
+                f'$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2); '
+                f'Register-ScheduledTask -TaskName "JarvisUnlock" -Action $action -Trigger $trigger '
+                f'-RunLevel Highest -Force | Out-Null; '
+                f'Start-Sleep -Seconds 3; '
+                f'Unregister-ScheduledTask -TaskName "JarvisUnlock" -Confirm:$false -ErrorAction SilentlyContinue'
+            )
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-NonInteractive",
+                 "-WindowStyle", "Hidden", "-Command", task_cmd],
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            return json.dumps({"status": "success", "message": "Unlocking screen, sir."})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
@@ -497,23 +469,11 @@ class SystemSkill(Skill):
     def set_brightness(self, level: int) -> str:
         level = max(0, min(100, int(level)))
         try:
-            if _OS == "Windows":
-                try:
-                    import screen_brightness_control as sbc
-                    sbc.set_brightness(level)
-                except ImportError:
-                    script = (f"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods)"
-                              f".WmiSetBrightness(1,{level})")
-                    subprocess.run(["powershell", "-c", script], capture_output=True, timeout=8)
-                return json.dumps({"status": "success", "message": f"Brightness set to {level} percent, sir."})
-            elif _OS == "Darwin":
-                val = level / 100
-                os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {val}'")
-                return json.dumps({"status": "success", "message": f"Brightness set to {level} percent, sir."})
-            else:
-                return json.dumps({"status": "error", "message": "Brightness control not supported on this OS."})
+            import screen_brightness_control as sbc
+            sbc.set_brightness(level)
+            return json.dumps({"status": "success", "message": f"Brightness set to {level} percent, sir."})
         except Exception as e:
-            return json.dumps({"status": "error", "message": str(e)})
+            return json.dumps({"status": "error", "message": f"Could not set brightness: {e}"})
 
     # ── shutdown ──────────────────────────────────────────────────────────────
     def shutdown_pc(self, restart: bool = False) -> str:

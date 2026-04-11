@@ -1,0 +1,3 @@
+set_volume(50): success - Volume set to 50 percent, sir.
+set_brightness(70): success - Brightness set to 70 percent, sir.
+mute_volume(False): success - Volume unmuted, sir.

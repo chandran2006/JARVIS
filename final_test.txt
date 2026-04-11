@@ -1,0 +1,3 @@
+play_youtube: success - Playing shape of you on YouTube in Brave, sir.
+open_website(youtube): success - Opened https://www.youtube.com in Brave, sir.
+search_web: success - Opened google search for python tutorial.

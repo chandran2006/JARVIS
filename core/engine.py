@@ -62,8 +62,10 @@ _INTENTS = [
     # Lock/Sleep/Shutdown — before open
     (r"^lock(?:\s+(?:the\s+)?(?:screen|pc|computer|system|laptop|device))?$|^(?:lock|secure)\s+(?:the\s+)?(?:screen|pc|computer|system|laptop)$",
      "lock_screen", lambda m, q: {}),
-    (r"^(?:unlock|open|wake)(?:\s+(?:the\s+)?(?:screen|pc|computer|system|laptop|device))?$|^(?:unlock|wake\s+up)\s+(?:the\s+)?(?:screen|pc|computer|system|laptop)$",
-     "unlock_screen", lambda m, q: {}),
+    (r"^(?:unlock|wake\s+up?)(?:\s+(?:the\s+)?(?:screen|pc|computer|system|laptop|device))?$"
+     r"|^(?:unlock|wake\s+up)\s+(?:the\s+)?(?:screen|pc|computer|system|laptop)$"
+     r"|^(?:please\s+)?unlock(?:\s+(?:the\s+)?(?:screen|pc|computer|system|laptop|device))?$",
+     "unlock_screen", lambda m, q: {"password": os.environ.get("WINDOWS_PASSWORD", "")}),
     (r"^(?:shutdown|shut\s+down|power\s+off)(?:\s+(?:the\s+)?(?:pc|computer|system|laptop))?$",
      "shutdown_pc", lambda m, q: {"restart": False}),
     (r"^restart(?:\s+(?:the\s+)?(?:pc|computer|system|laptop))?$",
@@ -126,16 +128,37 @@ _INTENTS = [
     # Web & Search
     (r"^(?:search|google|look\s+up|find)\s+(?:for\s+)?(.+)$",
      "search_web", lambda m, q: {"query": m.group(1).strip(), "engine": "google"}),
-    (r"^(?:youtube|play|watch)\s+(.+)$",
+    (r"^(?:youtube|play|watch|listen\s+to|put\s+on)\s+(.+)$",
      "play_youtube", lambda m, q: {"query": m.group(1).strip()}),
     (r"^(?:open|go\s+to|visit|browse)\s+(https?://\S+|www\.\S+|\w+\.(?:com|in|org|net|io|co)\S*)$",
      "open_website", lambda m, q: {"url": m.group(1).strip()}),
     (r"^(?:wikipedia|wiki)\s+(.+)$",
      "get_wikipedia_summary", lambda m, q: {"topic": m.group(1).strip()}),
-    (r"^news(?:\s+(?:about|on|for)\s+(.+))?$",
-     "get_top_news", lambda m, q: {"category": (m.group(1) or "general").strip()}),
+    (r"^news(?:\s+(?:about|on|for|from)\s+(.+))?$"
+     r"|^(?:latest|top|breaking|world|india|tech(?:nology)?|business|sports?|science|health|entertainment|politics)\s+news$"
+     r"|^(?:what(?:'s|\s+is)\s+(?:happening|going\s+on)(?:\s+in\s+the\s+world)?)$",
+     "get_top_news", lambda m, q: {
+         "category": (
+             m.group(1).strip() if m.lastindex and m.group(1)
+             else next((w for w in ["world","india","technology","tech","business","sports","science","health","entertainment","politics"] if w in q.lower()), "general")
+         )
+     }),
     (r"^(?:directions?|route|navigate|maps?)\s+(?:to\s+)?(.+)$",
      "open_website", lambda m, q: {"url": f"https://maps.google.com/?q={m.group(1).strip().replace(' ', '+')}"}),
+
+    # Coding
+    (r"^(?:write|create|generate|make)\s+(?:a\s+)?(?:code|program|script|function|class)\s+(?:for\s+|to\s+)?(.+)$",
+     "write_code", lambda m, q: {"question": m.group(1).strip()}),
+    (r"^(?:code|program|script)\s+(?:for\s+|to\s+)?(.+)$",
+     "write_code", lambda m, q: {"question": m.group(1).strip()}),
+    (r"^(?:solve|do|complete)\s+(?:this\s+)?(?:coding\s+)?(?:problem|question|task|challenge)?\s*[:\-]?\s*(.+)$",
+     "write_code", lambda m, q: {"question": m.group(1).strip()}),
+    (r"^(?:fix|debug|correct)\s+(?:this\s+)?(?:code|bug|error)\s*[:\-]?\s*(.*)$",
+     "fix_code", lambda m, q: {"code": m.group(1).strip() or "the code in editor"}),
+    (r"^(?:optimize|improve|refactor)\s+(?:this\s+)?(?:code)?\s*[:\-]?\s*(.*)$",
+     "optimize_code", lambda m, q: {"code": m.group(1).strip() or "the code in editor"}),
+    (r"^(?:explain|what\s+does)\s+(?:this\s+)?(?:code)?\s*(?:do)?\s*[:\-]?\s*(.+)$",
+     "explain_code", lambda m, q: {"code": m.group(1).strip()}),
 
     # Apps — after files/web patterns
     (r"^(?:open|launch|start|run)\s+(?:the\s+)?(.+?)(?:\s+in\s+(?:the\s+)?(.+))?$",
@@ -248,8 +271,11 @@ _FILLER_RE = re.compile(
 )
 
 _LEAK_RE = re.compile(
-    r"<function=\w+[^>]*>.*?</function>|<function=\w+\s*/?>|"
-    r"\[(?:TOOL_CALL|FUNCTION_CALL)\].*|\{\"tool\".*?\}",
+    r"<function[^>]*>.*?</function[^>]*>?"   # <function=...>...</function> full block
+    r"|</?function(?:_calls?)?[^>]*>?"        # any standalone <function> or </function> tag
+    r"|\w+>\{.*?\}</?function[^>]*>?"        # name>{...}</function with or without closing >
+    r"|\[(?:TOOL_CALL|FUNCTION_CALL)\].*"    # [TOOL_CALL]...
+    r"|`{3}.*?`{3}",                          # ```code blocks```
     re.DOTALL | re.I
 )
 
@@ -281,6 +307,13 @@ _TOOL_GROUPS = {
     "define":     {"word_definition"},
     "search":     {"search_web", "get_wikipedia_summary", "get_top_news"},
     "news":       {"get_top_news"},
+    "world":      {"get_top_news"},
+    "india":      {"get_top_news"},
+    "politics":   {"get_top_news"},
+    "health":     {"get_top_news"},
+    "entertainment": {"get_top_news"},
+    "breaking":   {"get_top_news"},
+    "headlines":  {"get_top_news"},
     "open":       {"open_app", "open_website"},
     "close":      {"close_app"},
     "volume":     {"set_volume", "mute_volume"},
@@ -298,6 +331,17 @@ _TOOL_GROUPS = {
     "joke":       {"get_joke"},
     "coin":       {"flip_coin"},
     "dice":       {"roll_dice"},
+    "code":       {"write_code", "fix_code", "optimize_code", "explain_code"},
+    "coding":     {"write_code", "fix_code", "optimize_code", "explain_code"},
+    "program":    {"write_code"},
+    "script":     {"write_code"},
+    "function":   {"write_code"},
+    "debug":      {"fix_code"},
+    "fix":        {"fix_code"},
+    "optimize":   {"optimize_code"},
+    "play":       {"play_youtube"},
+    "watch":      {"play_youtube"},
+    "listen":     {"play_youtube"},
 }
 
 # Always-available core tools (small set, always included)

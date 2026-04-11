@@ -1,0 +1,9 @@
+get_commodity_price({'commodity': 'gold'}): success -> Gold is at USD 4,787.40, down 0.64% today.
+get_commodity_price({'commodity': 'silver'}): success -> Silver is at USD 76.48, up 0.05% today.
+get_commodity_price({'commodity': 'crude oil'}): success -> Crude Oil is at USD 96.57, down 1.33% today.
+get_crypto_price({'coin': 'bitcoin'}): success -> Bitcoin is at $72,860.00 (₹6,783,625), up 1.51% in the last 24 hours.
+get_crypto_price({'coin': 'ethereum'}): success -> Ethereum is at $2,243.53 (₹208,885), up 2.25% in the last 24 hours.
+get_stock_price({'symbol': 'AAPL'}): success -> AAPL is trading at USD 260.48, down 0.01 (0.00%) today.
+get_stock_price({'symbol': 'RELIANCE.NS'}): success -> RELIANCE.NS is trading at INR 1,350.20, up 20.20 (1.52%) today.
+get_market_overview({}): success -> Market overview — Nifty 50: 24,050.60 ▲1.16%, Sensex: 77,550.25 ▲1.20%, S&P 500: 6,816.89 ▼0.11%, Nasdaq: 22,902.90 ▲0.3
+get_forex_rate({'from_currency': 'USD', 'to_currency': 'INR'}): success -> 1 USD = 93.0480 INR.

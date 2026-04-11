@@ -1,0 +1,15 @@
+=== VOLUME ===
+pycaw FAILED: 'AudioDevice' object has no attribute 'Activate'
+PowerShell SendKeys: returncode=0 err=
+Volume via SendKeys loop: DONE err=
+
+=== BRIGHTNESS ===
+sbc current brightness: [22]
+sbc set_brightness(70): OK
+WMI brightness: returncode=0 out= err=
+CIM brightness: returncode=1 out= err=Method invocation failed because [Microsoft.Management.Infrastructure.CimInstance] does not contain a method named 
+'WmiSetBrightness'.
+At line:1 char:1
++ (Get-CimInstance -Namespace root/WMI -Clas
+
+=== DONE ===
